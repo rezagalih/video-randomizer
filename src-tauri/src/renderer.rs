@@ -62,25 +62,26 @@ impl Renderer {
         self.cancel_flag.store(false, Ordering::SeqCst);
         self.paused_flag.store(false, Ordering::SeqCst);
         let _start = Instant::now();
+        let elapsed_progress_cb = {
+            let inner = progress_cb;
+            move |mut p: RenderProgress| {
+                p.elapsed_secs = _start.elapsed().as_secs_f64();
+                inner(p);
+            }
+        };
 
         let base_target = self.compute_base_target(music, settings);
 
-        progress_cb(RenderProgress {
+        (&elapsed_progress_cb)(RenderProgress {
             stage: format!("Building music playlist → target {:.0}s", base_target),
-            percent: 0.0,
-            elapsed_secs: 0.0,
-            estimated_remaining_secs: 0.0,
-            current_file: String::new(),
-            log_lines: vec![],
+            percent: 0.0, elapsed_secs: 0.0, estimated_remaining_secs: 0.0,
+            current_file: String::new(), log_lines: vec![],
         });
-        let (music_path, music_dur) = self.build_music_playlist(music, settings, music_order, &progress_cb)?;
-        progress_cb(RenderProgress {
+        let (music_path, music_dur) = self.build_music_playlist(music, settings, music_order, &elapsed_progress_cb)?;
+        (&elapsed_progress_cb)(RenderProgress {
             stage: format!("✓ Music playlist ready ({:.0}s)", music_dur),
-            percent: 5.0,
-            elapsed_secs: 0.0,
-            estimated_remaining_secs: 0.0,
-            current_file: String::new(),
-            log_lines: vec![],
+            percent: 5.0, elapsed_secs: 0.0, estimated_remaining_secs: 0.0,
+            current_file: String::new(), log_lines: vec![],
         });
 
         // Separate intro from main clips
@@ -91,7 +92,7 @@ impl Renderer {
         let intro_clip: Option<String> = if let Some(ii) = &intro_item {
             let work = std::env::temp_dir().join("video_randomizer/intro_clip.mp4");
             let out = work.to_string_lossy().to_string();
-            progress_cb(RenderProgress {
+            (&elapsed_progress_cb)(RenderProgress {
                 stage: "Trimming intro video".into(), percent: 5.0, elapsed_secs: 0.0,
                 estimated_remaining_secs: 0.0, current_file: ii.filename.clone(), log_lines: vec![],
             });
@@ -108,10 +109,10 @@ impl Renderer {
             if main_sequence.is_empty() {
                 bail!("No clips to render");
             }
-            let master = self.build_master_segment(&main_sequence, settings, &progress_cb)?;
+            let master = self.build_master_segment(&main_sequence, settings, &elapsed_progress_cb)?;
 
             self.check_cancel()?;
-            progress_cb(RenderProgress {
+            (&elapsed_progress_cb)(RenderProgress {
                 stage: "✓ Segment created".into(), percent: 50.0, elapsed_secs: 0.0,
                 estimated_remaining_secs: 0.0, current_file: String::new(), log_lines: vec![],
             });
@@ -119,22 +120,22 @@ impl Renderer {
             let total_dur: f64 = main_sequence.iter().map(|s| s.duration).sum();
             let actual_master_dur = self.clip_dur(&master).unwrap_or(total_dur);
             let looped = if total_dur < music_dur {
-                self.loop_segment(&master, music_dur, actual_master_dur, settings, &progress_cb)?
+                self.loop_segment(&master, music_dur, actual_master_dur, settings, &elapsed_progress_cb)?
             } else {
                 master
             };
             self.check_cancel()?;
 
-            progress_cb(RenderProgress {
+            (&elapsed_progress_cb)(RenderProgress {
                 stage: "Muxing video & audio → finalizing".into(), percent: 80.0, elapsed_secs: 0.0,
                 estimated_remaining_secs: 0.0, current_file: String::new(), log_lines: vec![],
             });
-            let final_path = self.mux_video_audio(&looped, &music_path, music_dur, settings, &progress_cb)?;
+            let final_path = self.mux_video_audio(&looped, &music_path, music_dur, settings, &elapsed_progress_cb)?;
 
             if settings.delete_cache {
                 let _ = std::fs::remove_dir_all(&std::env::temp_dir().join("video_randomizer"));
             }
-            progress_cb(RenderProgress {
+            (&elapsed_progress_cb)(RenderProgress {
                 stage: "Complete".into(), percent: 100.0, elapsed_secs: 0.0,
                 estimated_remaining_secs: 0.0, current_file: final_path.clone(), log_lines: vec![],
             });
@@ -142,7 +143,7 @@ impl Renderer {
         }
 
         // --- INTRO PATH: build segment_1 (intro + main, crossfaded), segment_2 (main only), loop seg2, xfade ---
-        let main_clips = self.trim_clips(&main_sequence, settings, &progress_cb)?;
+        let main_clips = self.trim_clips(&main_sequence, settings, &elapsed_progress_cb)?;
         let work_dir = std::env::temp_dir().join("video_randomizer");
         std::fs::create_dir_all(&work_dir)?;
         let intro = intro_clip.unwrap();
@@ -153,7 +154,7 @@ impl Renderer {
         if !main_clips.is_empty() {
             let mut seg1_clips = vec![intro.clone()];
             seg1_clips.extend(main_clips.iter().cloned());
-            self.concat_clips(&seg1_clips, &seg1_s, settings, &progress_cb)?;
+            self.concat_clips(&seg1_clips, &seg1_s, settings, &elapsed_progress_cb)?;
         } else {
             // No main clips — just rename intro as segment_1
             std::fs::rename(&intro, &seg1_s)?;
@@ -165,7 +166,7 @@ impl Renderer {
         let seg2_s = seg2.to_string_lossy().to_string();
         let mut seg2_dur = 0.0;
         if main_clips.len() > 1 {
-            self.concat_clips(&main_clips, &seg2_s, settings, &progress_cb)?;
+            self.concat_clips(&main_clips, &seg2_s, settings, &elapsed_progress_cb)?;
             seg2_dur = self.clip_dur(&seg2_s).unwrap_or(0.0);
         } else if main_clips.len() == 1 {
             std::fs::rename(&main_clips[0], &seg2_s)?;
@@ -173,7 +174,7 @@ impl Renderer {
         }
 
         self.check_cancel()?;
-        progress_cb(RenderProgress {
+        (&elapsed_progress_cb)(RenderProgress {
             stage: "✓ Segments created".into(), percent: 50.0, elapsed_secs: 0.0,
             estimated_remaining_secs: 0.0, current_file: String::new(), log_lines: vec![],
         });
@@ -186,7 +187,7 @@ impl Renderer {
         };
 
         let looped = if seg2_dur > 0.0 && main_sequence.iter().map(|s| s.duration).sum::<f64>() < loop_target {
-            self.loop_segment(&seg2_s, loop_target, seg2_dur, settings, &progress_cb)?
+            self.loop_segment(&seg2_s, loop_target, seg2_dur, settings, &elapsed_progress_cb)?
         } else if seg2_dur > 0.0 {
             seg2_s.clone()
         } else {
@@ -197,21 +198,21 @@ impl Renderer {
 
         // Xfade seg1 into looped (with configured fade duration) or use seg1 alone
         let final_video = if !looped.is_empty() && loop_target > 0.0 {
-            self.xfade_two(&seg1_s, &looped, seg1_dur, fdur, settings, &progress_cb)?
+            self.xfade_two(&seg1_s, &looped, seg1_dur, fdur, settings, &elapsed_progress_cb)?
         } else {
             seg1_s
         };
 
-        progress_cb(RenderProgress {
+        (&elapsed_progress_cb)(RenderProgress {
             stage: "Muxing video & audio → finalizing".into(), percent: 80.0, elapsed_secs: 0.0,
             estimated_remaining_secs: 0.0, current_file: String::new(), log_lines: vec![],
         });
-        let final_path = self.mux_video_audio(&final_video, &music_path, music_dur, settings, &progress_cb)?;
+        let final_path = self.mux_video_audio(&final_video, &music_path, music_dur, settings, &elapsed_progress_cb)?;
 
         if settings.delete_cache {
             let _ = std::fs::remove_dir_all(&std::env::temp_dir().join("video_randomizer"));
         }
-        progress_cb(RenderProgress {
+        (&elapsed_progress_cb)(RenderProgress {
             stage: "Complete".into(), percent: 100.0, elapsed_secs: 0.0,
             estimated_remaining_secs: 0.0, current_file: final_path.clone(), log_lines: vec![],
         });
@@ -274,7 +275,8 @@ impl Renderer {
         Ok(clip_paths)
     }
 
-    /// Xfade two pre-rendered videos with the configured fade duration.
+    /// Xfade two pre-rendered videos with configured fade duration.
+    /// Only re-encodes the ~fdur overlap; the rest uses zero-copy concat demuxer.
     fn xfade_two(
         &self,
         first: &str,
@@ -289,7 +291,7 @@ impl Renderer {
         let out_s = out.to_string_lossy().to_string();
 
         if fdur <= 0.0 || first_dur <= fdur {
-            // No fade: concat-demuxer
+            // No fade or too short: concat-demuxer (zero-copy)
             let list = work.join("xfade_concat.txt");
             let content = format!("file '{}'\nfile '{}'\n", first, second);
             std::fs::write(&list, &content)?;
@@ -300,19 +302,80 @@ impl Renderer {
             self.enc_opts(&mut cmd, settings);
             cmd.arg("-progress").arg("pipe:1").arg(&out_s);
             self.progress_run(cmd, 0.0, "Merging video segments", progress_cb)?;
-        } else {
-            let offset = first_dur - fdur;
+            return Ok(out_s);
+        }
+
+        // Efficient approach: only re-encode the ~fdur overlap.
+        // 1. Trim last fdur of first → tail (keyframe-accurate, -c copy)
+        // 2. Trim first fdur of second → head (-c copy)
+        // 3. Xfade tail + head → xfade_clip (small re-encode, ~fdur seconds)
+        // 4. Concat (zero-copy): first[0..first_dur-fdur] + xfade_clip + second[fdur..]
+
+        let tail = work.join("xfade_tail.mp4");
+        let tail_s = tail.to_string_lossy().to_string();
+        let head = work.join("xfade_head.mp4");
+        let head_s = head.to_string_lossy().to_string();
+        let cut_start = (first_dur - fdur).max(0.0);
+
+        // Step 1: tail — last fdur of first
+        {
             let mut cmd = Command::new(&self.ffmpeg_path);
-            cmd.arg("-y").arg("-i").arg(first).arg("-i").arg(second);
+            cmd.arg("-y").arg("-ss").arg(&cut_start.to_string())
+                .arg("-i").arg(first)
+                .arg("-t").arg(&fdur.to_string())
+                .arg("-c").arg("copy").arg(&tail_s);
+            let child = cmd.stdout(Stdio::null()).stderr(Stdio::null()).spawn()
+                .context("Failed to spawn ffmpeg for xfade tail")?;
+            let _ = child.wait_with_output()?;
+        }
+
+        // Step 2: head — first fdur of second
+        {
+            let mut cmd = Command::new(&self.ffmpeg_path);
+            cmd.arg("-y").arg("-ss").arg("0")
+                .arg("-i").arg(second)
+                .arg("-t").arg(&fdur.to_string())
+                .arg("-c").arg("copy").arg(&head_s);
+            let child = cmd.stdout(Stdio::null()).stderr(Stdio::null()).spawn()
+                .context("Failed to spawn ffmpeg for xfade head")?;
+            let _ = child.wait_with_output()?;
+        }
+
+        // Step 3: xfade tail + head (small re-encode, ~fdur seconds)
+        let xfade_clip = work.join("xfade_clip.mp4");
+        let xfade_clip_s = xfade_clip.to_string_lossy().to_string();
+        {
+            let mut cmd = Command::new(&self.ffmpeg_path);
+            cmd.arg("-y").arg("-i").arg(&tail_s).arg("-i").arg(&head_s);
             let filter = format!(
-                "xfade=transition=fade:duration={}:offset={}[vout]",
-                fdur, offset
+                "xfade=transition=fade:duration={}:offset=0[vout]",
+                fdur
             );
             cmd.arg("-filter_complex").arg(&filter).arg("-map").arg("[vout]");
             self.enc_opts(&mut cmd, settings);
-            cmd.arg("-progress").arg("pipe:1").arg(&out_s);
-            self.progress_run(cmd, 0.0, "Crossfading intro with main video", progress_cb)?;
+            cmd.arg("-progress").arg("pipe:1").arg(&xfade_clip_s);
+            self.progress_run(cmd, fdur, "Crossfading intro with main video", progress_cb)?;
         }
+
+        // Step 4: concat first[0..cut_start] + xfade_clip + second[fdur..] (zero-copy)
+        {
+            let list = work.join("xfade_merge.txt");
+            let content = format!(
+                "file '{}'\noutpoint {}\nfile '{}'\nfile '{}'\ninpoint {}\n",
+                first, cut_start,
+                xfade_clip_s,
+                second, fdur,
+            );
+            std::fs::write(&list, &content)?;
+            let mut cmd = Command::new(&self.ffmpeg_path);
+            cmd.arg("-y").arg("-f").arg("concat").arg("-safe").arg("0")
+                .arg("-i").arg(&list);
+            self.vf_opts(&mut cmd, settings);
+            self.enc_opts(&mut cmd, settings);
+            cmd.arg("-progress").arg("pipe:1").arg(&out_s);
+            self.progress_run(cmd, 0.0, "Merging xfade with full video", progress_cb)?;
+        }
+
         Ok(out_s)
     }
 
