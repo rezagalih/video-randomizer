@@ -7,6 +7,7 @@ import DurationSettings from "./components/DurationSettings";
 import EncodingSettings from "./components/EncodingSettings";
 import TransitionSettings from "./components/TransitionSettings";
 import OutputSettings from "./components/OutputSettings";
+import WatermarkSettings from "./components/WatermarkSettings";
 import SequenceDisplay from "./components/SequenceDisplay";
 import RenderProgressPanel from "./components/RenderProgress";
 
@@ -40,6 +41,13 @@ function defaultSettings(): RenderSettings {
     clip_duration: 10,
     prevent_duplicates: true,
     delete_cache: true,
+    watermark: {
+      enabled: false,
+      image_path: "",
+      position_x: 50,
+      position_y: 50,
+      scale: 10,
+    },
   };
 }
 
@@ -73,7 +81,7 @@ export default function App() {
         setVideos(data.videos || []);
         setMusic(data.music || []);
         setSequence(data.sequence || []);
-        if (data.settings) setSettings(data.settings);
+        if (data.settings) setSettings({ ...defaultSettings(), ...data.settings });
       } catch {
         // no saved state, use defaults
       }
@@ -230,6 +238,7 @@ export default function App() {
               <EncodingSettings settings={settings} onChange={setSettings} />
               <TransitionSettings settings={settings} onChange={setSettings} />
               <OutputSettings settings={settings} onChange={setSettings} />
+              <WatermarkSettings settings={settings} onChange={setSettings} videos={videos} />
             </div>
           </div>
         )}

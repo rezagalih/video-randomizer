@@ -514,8 +514,62 @@ impl Renderer {
             .arg("-safe").arg("0")
             .arg("-i").arg(music_list);
 
-        cmd.args(["-map", "0:v:0", "-map", "1:a:0"]);
-        cmd.arg("-c:v").arg("copy");
+        let use_watermark = settings.watermark.enabled && !settings.watermark.image_path.is_empty();
+
+        if use_watermark {
+            cmd.arg("-i").arg(&settings.watermark.image_path);
+        }
+
+        if use_watermark {
+            let px = settings.watermark.position_x;
+            let py = settings.watermark.position_y;
+            let sc = settings.watermark.scale;
+
+            // Probe actual video dimensions for pixel-perfect computation
+            let (vw, vh) = self.probe_video_dims(video).unwrap_or((1920, 1080));
+            let (wm_ow, wm_oh) = self.probe_video_dims(&settings.watermark.image_path).unwrap_or((100, 100));
+
+            let wm_w = (vw as f64 * sc / 100.0).round().max(1.0) as i32;
+            let wm_h = (wm_w as f64 * wm_oh as f64 / wm_ow as f64).round().max(1.0) as i32;
+            let ox = ((vw as f64 - wm_w as f64) * px / 100.0).round() as i32;
+            let oy = ((vh as f64 - wm_h as f64) * py / 100.0).round() as i32;
+
+            let mut parts = Vec::new();
+            let mut main_tag = "0:v".to_string();
+
+            if let OutputResolution::Custom { width, height } = &settings.resolution {
+                parts.push(format!("[{}]scale={}:{}[ms1]", main_tag, width, height));
+                main_tag = "ms1".to_string();
+            }
+            if let OutputFps::Custom(f) = &settings.fps {
+                parts.push(format!("[{}]fps={}[mr]", main_tag, f));
+                main_tag = "mr".to_string();
+            }
+
+            parts.push(format!("[2:v]scale={}:{}[wm]", wm_w, wm_h));
+            parts.push(format!("[{}][wm]overlay={}:{}[vout]", main_tag, ox, oy));
+
+            cmd.arg("-filter_complex").arg(parts.join(";"));
+            cmd.args(["-map", "[vout]", "-map", "1:a:0"]);
+            self.enc_opts(&mut cmd, settings);
+        } else {
+            let mut has_vf = false;
+            let mut vf_parts = Vec::new();
+            if let OutputResolution::Custom { width, height } = &settings.resolution {
+                vf_parts.push(format!("scale={}:{}", width, height));
+                has_vf = true;
+            }
+            if let OutputFps::Custom(f) = &settings.fps {
+                vf_parts.push(format!("fps={}", f));
+                has_vf = true;
+            }
+            if has_vf {
+                cmd.arg("-vf").arg(vf_parts.join(","));
+            }
+            cmd.args(["-map", "0:v:0", "-map", "1:a:0"]);
+            cmd.arg("-c:v").arg("copy");
+        }
+
         cmd.arg("-c:a").arg("aac").arg("-b:a").arg("192k");
         cmd.arg("-t").arg(&duration.to_string());
         cmd.arg("-progress").arg("pipe:1").arg(&out);
@@ -560,6 +614,25 @@ impl Renderer {
             .output()?;
         let j: serde_json::Value = serde_json::from_slice(&out.stdout)?;
         Ok(j["format"]["duration"].as_str().and_then(|d| d.parse().ok()).unwrap_or(0.0))
+    }
+
+    fn probe_video_dims(&self, path: &str) -> Result<(u32, u32)> {
+        let out = Command::new("ffprobe")
+            .args(["-v", "quiet", "-print_format", "json", "-show_streams", path])
+            .output()?;
+        let j: serde_json::Value = serde_json::from_slice(&out.stdout)?;
+        if let Some(streams) = j["streams"].as_array() {
+            for stream in streams {
+                if stream["codec_type"] == "video" {
+                    let w = stream["width"].as_u64().unwrap_or(0) as u32;
+                    let h = stream["height"].as_u64().unwrap_or(0) as u32;
+                    if w > 0 && h > 0 {
+                        return Ok((w, h));
+                    }
+                }
+            }
+        }
+        anyhow::bail!("Could not probe video dimensions from {}", path)
     }
 
     fn check_cancel(&self) -> Result<()> {

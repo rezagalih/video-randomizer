@@ -22,6 +22,14 @@ export interface SequenceItem {
   duration: number;
 }
 
+export interface WatermarkSettings {
+  enabled: boolean;
+  image_path: string;
+  position_x: number;
+  position_y: number;
+  scale: number;
+}
+
 export interface RenderSettings {
   video_playback_mode: "shuffle" | "sequential";
   music_playback_mode: "shuffle" | "sequential" | "repeat_single";
@@ -39,6 +47,7 @@ export interface RenderSettings {
   clip_duration: number;
   prevent_duplicates: boolean;
   delete_cache: boolean;
+  watermark: WatermarkSettings;
 }
 
 export interface RenderProgress {

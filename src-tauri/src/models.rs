@@ -87,6 +87,15 @@ pub enum OutputFps {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WatermarkSettings {
+    pub enabled: bool,
+    pub image_path: String,
+    pub position_x: f64,
+    pub position_y: f64,
+    pub scale: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RenderSettings {
     pub video_playback_mode: PlaybackMode,
     pub music_playback_mode: MusicPlaybackMode,
@@ -104,6 +113,7 @@ pub struct RenderSettings {
     pub clip_duration: f64,
     pub prevent_duplicates: bool,
     pub delete_cache: bool,
+    pub watermark: WatermarkSettings,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
