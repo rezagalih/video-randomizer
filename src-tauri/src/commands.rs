@@ -113,14 +113,14 @@ pub fn generate_sequence(
     // prevent_duplicates impossible with single video
     let prevent_duplicates = prevent_duplicates && count > 1;
 
-    fn make_item(video: &VideoFile, order: usize, start: f64, end: f64) -> SequenceItem {
+    fn make_item(video: &VideoFile, order: usize, src_start: f64, src_end: f64) -> SequenceItem {
         SequenceItem {
             video_path: video.path.clone(),
             filename: video.filename.clone(),
             order,
-            start_time: start,
-            end_time: end,
-            duration: end - start,
+            start_time: src_start,
+            end_time: src_end,
+            duration: src_end - src_start,
         }
     }
 
@@ -157,8 +157,7 @@ pub fn generate_sequence(
         for &idx in &order {
             let video = &videos[idx];
             let (start, end) = pick_cut(video, cut_random_enabled, cut_random_min, cut_random_max);
-            sequence.push(make_item(video, sequence.len(), current_time + start, current_time + end));
-            current_time += end - start;
+            sequence.push(make_item(video, sequence.len(), start, end));
         }
     } else {
         // Multi-round: loop through videos until target duration is reached
@@ -190,7 +189,7 @@ pub fn generate_sequence(
                 let (start, end) = pick_cut(video, cut_random_enabled, cut_random_min, cut_random_max);
                 let dur = end - start;
 
-                sequence.push(make_item(video, sequence.len(), current_time + start, current_time + end));
+                sequence.push(make_item(video, sequence.len(), start, end));
 
                 current_time += dur;
                 prev_idx = idx;

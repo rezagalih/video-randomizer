@@ -42,8 +42,8 @@ export default function SequenceDisplay({ sequence, totalDuration, onRegenerate 
               <th>#</th>
               <th>Video</th>
               <th>Duration</th>
-              <th>Start</th>
-              <th>End</th>
+              <th>Cut From</th>
+              <th>Cut To</th>
             </tr>
           </thead>
           <tbody>

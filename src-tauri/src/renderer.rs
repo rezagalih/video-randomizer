@@ -245,7 +245,7 @@ impl Renderer {
 
             let mut cmd = Command::new(&self.ffmpeg_path);
             cmd.arg("-y")
-                .arg("-ss").arg("0")
+                .arg("-ss").arg(&item.start_time.to_string())
                 .arg("-i").arg(&item.video_path)
                 .arg("-t").arg(&item.duration.to_string());
             if settings.mute_source_audio { cmd.arg("-an"); }
