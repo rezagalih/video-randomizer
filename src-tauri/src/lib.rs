@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 
 use commands::AppState;
 use renderer::Renderer;
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -14,9 +15,27 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
-        .manage(Mutex::new(AppState {
-            renderer: Arc::new(Renderer::new()),
-        }))
+        .setup(|app| {
+            // resolve bundled ffmpeg/ffprobe paths
+            let ffmpeg_path = app
+                .path()
+                .resolve("bin/ffmpeg", tauri::path::BaseDirectory::Resource)
+                .unwrap_or_else(|_| "ffmpeg".into());
+            let ffprobe_path = app
+                .path()
+                .resolve("bin/ffprobe", tauri::path::BaseDirectory::Resource)
+                .unwrap_or_else(|_| "ffprobe".into());
+
+            let state = AppState {
+                renderer: Arc::new(Renderer::new(
+                    ffmpeg_path.to_string_lossy().to_string(),
+                    ffprobe_path.to_string_lossy().to_string(),
+                )),
+                ffprobe_path: ffprobe_path.to_string_lossy().to_string(),
+            };
+            app.manage(Mutex::new(state));
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::get_video_metadata,
             commands::get_music_metadata,

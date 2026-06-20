@@ -4,8 +4,8 @@ use std::process::Command;
 
 use crate::models::{MusicFile, VideoFile};
 
-pub fn get_video_metadata(path: &str) -> Result<VideoFile> {
-    let output = Command::new("ffprobe")
+pub fn get_video_metadata(path: &str, ffprobe_path: &str) -> Result<VideoFile> {
+    let output = Command::new(ffprobe_path)
         .args([
             "-v",
             "quiet",
@@ -66,8 +66,8 @@ pub fn get_video_metadata(path: &str) -> Result<VideoFile> {
     })
 }
 
-pub fn get_music_metadata(path: &str) -> Result<MusicFile> {
-    let output = Command::new("ffprobe")
+pub fn get_music_metadata(path: &str, ffprobe_path: &str) -> Result<MusicFile> {
+    let output = Command::new(ffprobe_path)
         .args([
             "-v",
             "quiet",

@@ -12,14 +12,18 @@ pub struct Renderer {
     cancel_flag: Arc<AtomicBool>,
     paused_flag: Arc<AtomicBool>,
     current_child: Arc<Mutex<Option<Child>>>,
+    ffmpeg_path: String,
+    ffprobe_path: String,
 }
 
 impl Renderer {
-    pub fn new() -> Self {
+    pub fn new(ffmpeg_path: String, ffprobe_path: String) -> Self {
         Self {
             cancel_flag: Arc::new(AtomicBool::new(false)),
             paused_flag: Arc::new(AtomicBool::new(false)),
             current_child: Arc::new(Mutex::new(None)),
+            ffmpeg_path,
+            ffprobe_path,
         }
     }
 
@@ -239,7 +243,7 @@ impl Renderer {
                 log_lines: vec![],
             });
 
-            let mut cmd = Command::new("ffmpeg");
+            let mut cmd = Command::new(&self.ffmpeg_path);
             cmd.arg("-y")
                 .arg("-ss").arg("0")
                 .arg("-i").arg(&item.video_path)
@@ -290,7 +294,7 @@ impl Renderer {
         });
 
         if fdur > 0.0 && n > 1 {
-            let mut cmd = Command::new("ffmpeg");
+            let mut cmd = Command::new(&self.ffmpeg_path);
             cmd.arg("-y");
             for c in clips { cmd.arg("-i").arg(c); }
 
@@ -324,7 +328,7 @@ impl Renderer {
             }
             std::fs::write(&concat_list, &content)?;
 
-            let mut cmd = Command::new("ffmpeg");
+            let mut cmd = Command::new(&self.ffmpeg_path);
             cmd.arg("-y")
                 .arg("-f").arg("concat")
                 .arg("-safe").arg("0")
@@ -378,7 +382,7 @@ impl Renderer {
             }
             std::fs::write(&list, &content)?;
 
-            let mut cmd = Command::new("ffmpeg");
+            let mut cmd = Command::new(&self.ffmpeg_path);
             cmd.arg("-y")
                 .arg("-f").arg("concat")
                 .arg("-safe").arg("0")
@@ -416,7 +420,7 @@ impl Renderer {
             }
             std::fs::write(&list, &content)?;
 
-            let mut cmd = Command::new("ffmpeg");
+            let mut cmd = Command::new(&self.ffmpeg_path);
             cmd.arg("-y")
                 .arg("-f").arg("concat")
                 .arg("-safe").arg("0")
@@ -429,7 +433,7 @@ impl Renderer {
         }
 
         // Use N `-i` inputs + xfade chain (no split=N, which causes OOM).
-        let mut cmd = Command::new("ffmpeg");
+        let mut cmd = Command::new(&self.ffmpeg_path);
         cmd.arg("-y");
         for _ in 0..num {
             cmd.arg("-i").arg(segment);
@@ -482,7 +486,7 @@ impl Renderer {
             log_lines: vec![],
         });
 
-        let mut cmd = Command::new("ffmpeg");
+        let mut cmd = Command::new(&self.ffmpeg_path);
         cmd.arg("-y")
             .arg("-i").arg(video)
             .arg("-f").arg("concat")
@@ -560,7 +564,7 @@ impl Renderer {
     }
 
     fn clip_dur(&self, path: &str) -> Result<f64> {
-        let out = Command::new("ffprobe")
+        let out = Command::new(&self.ffprobe_path)
             .args(["-v", "quiet", "-print_format", "json", "-show_format", path])
             .output()?;
         let j: serde_json::Value = serde_json::from_slice(&out.stdout)?;
@@ -568,7 +572,7 @@ impl Renderer {
     }
 
     fn probe_video_dims(&self, path: &str) -> Result<(u32, u32)> {
-        let out = Command::new("ffprobe")
+        let out = Command::new(&self.ffprobe_path)
             .args(["-v", "quiet", "-print_format", "json", "-show_streams", path])
             .output()?;
         let j: serde_json::Value = serde_json::from_slice(&out.stdout)?;

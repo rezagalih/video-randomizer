@@ -4,3 +4,6 @@ target/
 .DS_Store
 *.log
 .env
+
+# Bundled FFmpeg binaries (download manually: scripts/download-ffmpeg.sh)
+src-tauri/resources/bin/

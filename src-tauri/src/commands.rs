@@ -32,16 +32,19 @@ pub fn load_state(path: String) -> Result<serde_json::Value, String> {
 
 pub struct AppState {
     pub renderer: Arc<Renderer>,
+    pub ffprobe_path: String,
 }
 
 #[tauri::command]
-pub fn get_video_metadata(path: String) -> Result<VideoFile, String> {
-    metadata::get_video_metadata(&path).map_err(|e| e.to_string())
+pub fn get_video_metadata(path: String, state: State<'_, Mutex<AppState>>) -> Result<VideoFile, String> {
+    let ffprobe = state.lock().map_err(|e| e.to_string())?.ffprobe_path.clone();
+    metadata::get_video_metadata(&path, &ffprobe).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn get_music_metadata(path: String) -> Result<MusicFile, String> {
-    metadata::get_music_metadata(&path).map_err(|e| e.to_string())
+pub fn get_music_metadata(path: String, state: State<'_, Mutex<AppState>>) -> Result<MusicFile, String> {
+    let ffprobe = state.lock().map_err(|e| e.to_string())?.ffprobe_path.clone();
+    metadata::get_music_metadata(&path, &ffprobe).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -55,7 +58,8 @@ pub fn validate_music(path: String) -> bool {
 }
 
 #[tauri::command]
-pub fn scan_folder(path: String) -> Result<ScanResult, String> {
+pub fn scan_folder(path: String, state: State<'_, Mutex<AppState>>) -> Result<ScanResult, String> {
+    let ffprobe = state.lock().map_err(|e| e.to_string())?.ffprobe_path.clone();
     let dir = std::fs::read_dir(&path).map_err(|e| e.to_string())?;
 
     let mut videos = Vec::new();
@@ -68,11 +72,11 @@ pub fn scan_folder(path: String) -> Result<ScanResult, String> {
 
         if p.is_file() {
             if metadata::validate_video_file(&p_str) {
-                if let Ok(m) = metadata::get_video_metadata(&p_str) {
+                if let Ok(m) = metadata::get_video_metadata(&p_str, &ffprobe) {
                     videos.push(m);
                 }
             } else if metadata::validate_music_file(&p_str) {
-                if let Ok(m) = metadata::get_music_metadata(&p_str) {
+                if let Ok(m) = metadata::get_music_metadata(&p_str, &ffprobe) {
                     music.push(m);
                 }
             }
