@@ -231,8 +231,6 @@ export default function App() {
               <PlaybackStrategy
                 settings={settings}
                 onChange={setSettings}
-                hasVideos={videos.length > 0}
-                onGenerateSequence={handleGenerateSequence}
               />
               <DurationSettings settings={settings} onChange={setSettings} />
               <EncodingSettings settings={settings} onChange={setSettings} />
@@ -275,7 +273,7 @@ export default function App() {
           {tab === "settings" && (
             <>
               <button onClick={() => setTab("import")}>← Back</button>
-              <button className="primary" onClick={() => setTab("render")}>
+              <button className="primary" onClick={handleGenerateSequence}>
                 🎬 Next: Render →
               </button>
             </>

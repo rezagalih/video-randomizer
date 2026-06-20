@@ -525,7 +525,6 @@ impl Renderer {
             let py = settings.watermark.position_y;
             let sc = settings.watermark.scale;
 
-            // Probe actual video dimensions for pixel-perfect computation
             let (vw, vh) = self.probe_video_dims(video).unwrap_or((1920, 1080));
             let (wm_ow, wm_oh) = self.probe_video_dims(&settings.watermark.image_path).unwrap_or((100, 100));
 
@@ -534,38 +533,15 @@ impl Renderer {
             let ox = ((vw as f64 - wm_w as f64) * px / 100.0).round() as i32;
             let oy = ((vh as f64 - wm_h as f64) * py / 100.0).round() as i32;
 
-            let mut parts = Vec::new();
-            let mut main_tag = "0:v".to_string();
+            let filter = format!(
+                "[2:v]scale={}:{}[wm];[0:v][wm]overlay={}:{}[vout]",
+                wm_w, wm_h, ox, oy
+            );
 
-            if let OutputResolution::Custom { width, height } = &settings.resolution {
-                parts.push(format!("[{}]scale={}:{}[ms1]", main_tag, width, height));
-                main_tag = "ms1".to_string();
-            }
-            if let OutputFps::Custom(f) = &settings.fps {
-                parts.push(format!("[{}]fps={}[mr]", main_tag, f));
-                main_tag = "mr".to_string();
-            }
-
-            parts.push(format!("[2:v]scale={}:{}[wm]", wm_w, wm_h));
-            parts.push(format!("[{}][wm]overlay={}:{}[vout]", main_tag, ox, oy));
-
-            cmd.arg("-filter_complex").arg(parts.join(";"));
+            cmd.arg("-filter_complex").arg(&filter);
             cmd.args(["-map", "[vout]", "-map", "1:a:0"]);
             self.enc_opts(&mut cmd, settings);
         } else {
-            let mut has_vf = false;
-            let mut vf_parts = Vec::new();
-            if let OutputResolution::Custom { width, height } = &settings.resolution {
-                vf_parts.push(format!("scale={}:{}", width, height));
-                has_vf = true;
-            }
-            if let OutputFps::Custom(f) = &settings.fps {
-                vf_parts.push(format!("fps={}", f));
-                has_vf = true;
-            }
-            if has_vf {
-                cmd.arg("-vf").arg(vf_parts.join(","));
-            }
             cmd.args(["-map", "0:v:0", "-map", "1:a:0"]);
             cmd.arg("-c:v").arg("copy");
         }

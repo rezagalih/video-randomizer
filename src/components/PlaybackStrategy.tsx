@@ -3,11 +3,9 @@ import { RenderSettings } from "../types";
 interface Props {
   settings: RenderSettings;
   onChange: (s: RenderSettings) => void;
-  hasVideos: boolean;
-  onGenerateSequence: () => void;
 }
 
-export default function PlaybackStrategy({ settings, onChange, hasVideos, onGenerateSequence }: Props) {
+export default function PlaybackStrategy({ settings, onChange }: Props) {
   function update(d: Partial<RenderSettings>) {
     onChange({ ...settings, ...d });
   }
@@ -73,9 +71,6 @@ export default function PlaybackStrategy({ settings, onChange, hasVideos, onGene
           Durasi total segmen yang dibuat dari semua video (di-shuffle & di-loop). Hasil segmen ini lalu di-loop lagi di Pass 2 untuk mencocokkan durasi musik. Contoh: set 60s → kumpulan video diisi sampai ~60 detik.
         </div>
       </div>
-      <button className="primary" onClick={onGenerateSequence} disabled={!hasVideos}>
-        🔀 Generate Sequence
-      </button>
     </div>
   );
 }
