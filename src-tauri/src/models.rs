@@ -113,4 +113,5 @@ pub struct RenderProgress {
     pub elapsed_secs: f64,
     pub estimated_remaining_secs: f64,
     pub current_file: String,
+    pub log_lines: Vec<String>,
 }

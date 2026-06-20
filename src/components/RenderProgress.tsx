@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { RenderProgress as RenderProgressType } from "../types";
 
 interface Props {
@@ -13,6 +14,13 @@ interface Props {
 }
 
 export default function RenderProgress({ progress, isRendering, onCancel, onPause, isPaused, outputPath, onOpenFolder, onOpenFile }: Props) {
+  const logRef = useRef<HTMLPreElement>(null);
+
+  useEffect(() => {
+    if (logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [progress?.log_lines]);
   if (!isRendering && !progress) {
     return (
       <div className="card">
@@ -65,6 +73,30 @@ export default function RenderProgress({ progress, isRendering, onCancel, onPaus
           )}
         </div>
       </div>
+      <details style={{ marginTop: 12 }} open>
+        <summary style={{ fontSize: 12, color: "var(--text2)", cursor: "pointer" }}>📝 FFmpeg Log</summary>
+        <pre
+          ref={logRef}
+          style={{
+            background: "#111",
+            color: "#0f0",
+            padding: 10,
+            borderRadius: 6,
+            fontSize: 11,
+            lineHeight: 1.4,
+            maxHeight: 200,
+            overflow: "auto",
+            marginTop: 8,
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-all",
+          }}
+        >
+          {progress.log_lines.length > 0
+            ? progress.log_lines.join("\n")
+            : "Waiting for output..."}
+        </pre>
+      </details>
+
       {isRendering && (
         <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
           <button onClick={onPause} className={isPaused ? "primary" : ""}>

@@ -47,6 +47,7 @@ export interface RenderProgress {
   elapsed_secs: number;
   estimated_remaining_secs: number;
   current_file: string;
+  log_lines: string[];
 }
 
 export interface ScanResult {

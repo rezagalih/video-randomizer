@@ -1,4 +1,5 @@
 use anyhow::{bail, Context, Result};
+use std::collections::VecDeque;
 use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -65,6 +66,7 @@ impl Renderer {
             elapsed_secs: 0.0,
             estimated_remaining_secs: 0.0,
             current_file: String::new(),
+            log_lines: vec![],
         });
         let (music_path, music_dur) = self.build_music_playlist(music, base_target, settings, &progress_cb)?;
         progress_cb(RenderProgress {
@@ -73,6 +75,7 @@ impl Renderer {
             elapsed_secs: 0.0,
             estimated_remaining_secs: 0.0,
             current_file: String::new(),
+            log_lines: vec![],
         });
 
         progress_cb(RenderProgress {
@@ -81,6 +84,7 @@ impl Renderer {
             elapsed_secs: 0.0,
             estimated_remaining_secs: 0.0,
             current_file: String::new(),
+            log_lines: vec![],
         });
         let master = self.build_master_segment(sequence, settings, &progress_cb)?;
         self.check_cancel()?;
@@ -90,6 +94,7 @@ impl Renderer {
             elapsed_secs: 0.0,
             estimated_remaining_secs: 0.0,
             current_file: String::new(),
+            log_lines: vec![],
         });
 
         let total_video_dur: f64 = sequence.iter().map(|s| s.duration).sum();
@@ -108,6 +113,7 @@ impl Renderer {
             elapsed_secs: 0.0,
             estimated_remaining_secs: 0.0,
             current_file: String::new(),
+            log_lines: vec![],
         });
         let final_path = self.mux_video_audio(&looped, &music_path, music_dur, settings, &progress_cb)?;
 
@@ -117,11 +123,12 @@ impl Renderer {
         }
 
         progress_cb(RenderProgress {
-            stage: "✅ Complete".into(),
+            stage: "Complete".into(),
             percent: 100.0,
             elapsed_secs: 0.0,
             estimated_remaining_secs: 0.0,
             current_file: final_path.clone(),
+            log_lines: vec![],
         });
 
         Ok(final_path)
@@ -157,6 +164,7 @@ impl Renderer {
             elapsed_secs: 0.0,
             estimated_remaining_secs: 0.0,
             current_file: String::new(),
+            log_lines: vec![],
         });
 
         let work = std::env::temp_dir().join("video_randomizer");
@@ -226,6 +234,7 @@ impl Renderer {
             elapsed_secs: 0.0,
             estimated_remaining_secs: 0.0,
             current_file: String::new(),
+            log_lines: vec![],
         });
 
         if sequence.is_empty() {
@@ -252,6 +261,7 @@ impl Renderer {
                 elapsed_secs: 0.0,
                 estimated_remaining_secs: 0.0,
                 current_file: item.filename.clone(),
+                log_lines: vec![],
             });
 
             let mut cmd = Command::new("ffmpeg");
@@ -301,6 +311,7 @@ impl Renderer {
             elapsed_secs: 0.0,
             estimated_remaining_secs: 0.0,
             current_file: String::new(),
+            log_lines: vec![],
         });
 
         if fdur > 0.0 && n > 1 {
@@ -380,6 +391,7 @@ impl Renderer {
             elapsed_secs: 0.0,
             estimated_remaining_secs: 0.0,
             current_file: format!("{} loops", num),
+            log_lines: vec![],
         });
 
         if fdur <= 0.0 || num <= 1 {
@@ -492,6 +504,7 @@ impl Renderer {
             elapsed_secs: 0.0,
             estimated_remaining_secs: 0.0,
             current_file: String::new(),
+            log_lines: vec![],
         });
 
         let mut cmd = Command::new("ffmpeg");
@@ -594,14 +607,23 @@ impl Renderer {
             guard.as_mut().unwrap().stdout.take().unwrap()
         };
 
-        // Read stderr in background thread
+        // Shared buffer for all stderr lines (for error reporting)
         let err_buf = Arc::new(Mutex::new(Vec::<u8>::new()));
         let err_buf_clone = err_buf.clone();
+        // Shared buffer for recent stderr log lines (for live display)
+        let log_lines = Arc::new(Mutex::new(VecDeque::<String>::with_capacity(100)));
+        let log_lines_clone = log_lines.clone();
         let stderr_handle = std::thread::spawn(move || {
             let mut buf = Vec::new();
             let reader = BufReader::new(stderr);
             for line in reader.lines() {
                 if let Ok(l) = line {
+                    let mut q = log_lines_clone.lock().unwrap();
+                    if q.len() >= 100 {
+                        q.pop_front();
+                    }
+                    q.push_back(l.clone());
+                    drop(q);
                     buf.extend_from_slice(l.as_bytes());
                     buf.push(b'\n');
                 }
@@ -633,12 +655,14 @@ impl Renderer {
                         } else {
                             (0.0, 0.0)
                         };
+                        let recent = log_lines.lock().unwrap().drain(..).collect();
                         progress_cb(RenderProgress {
                             stage: stage.to_string(),
                             percent: pct,
                             elapsed_secs: elapsed,
                             estimated_remaining_secs: remain,
                             current_file: String::new(),
+                            log_lines: recent,
                         });
                     }
                 } else if l.starts_with("duration=") {
