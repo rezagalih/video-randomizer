@@ -172,7 +172,18 @@ impl Renderer {
         let list_path = work.join("music_playlist.txt");
         let list_str = list_path.to_string_lossy().to_string();
 
-        let order: Vec<usize> = (0..music.len()).collect();
+        use rand::seq::SliceRandom;
+
+        let order: Vec<usize> = match settings.music_playback_mode {
+            MusicPlaybackMode::Shuffle => {
+                let mut indices: Vec<usize> = (0..music.len()).collect();
+                let mut rng = rand::thread_rng();
+                indices.shuffle(&mut rng);
+                indices
+            }
+            MusicPlaybackMode::RepeatSingle => vec![0],
+            MusicPlaybackMode::Sequential => (0..music.len()).collect(),
+        };
         let mut content = String::new();
         let mut acc = 0.0;
 

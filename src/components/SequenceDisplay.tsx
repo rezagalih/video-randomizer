@@ -18,7 +18,7 @@ export default function SequenceDisplay({ sequence, totalDuration, onRegenerate 
       <div className="card">
         <h3>📋 Generated Sequence</h3>
         <div className="empty-state">
-          No sequence generated. Configure settings and click "Generate Sequence" in the Settings tab.
+          No sequence generated. Go to Settings tab and click "Next: Render →".
         </div>
       </div>
     );

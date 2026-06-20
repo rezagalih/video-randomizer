@@ -51,11 +51,20 @@ function defaultSettings(): RenderSettings {
   };
 }
 
+function formatDuration(s: number): string {
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = Math.floor(s % 60);
+  if (h > 0) return `${h}h${m}m`;
+  return `${m}:${sec.toString().padStart(2, "0")}`;
+}
+
 interface PersistedState {
   videos: VideoFile[];
   music: MusicFile[];
   sequence: SequenceItem[];
   settings: RenderSettings;
+  musicOrder: number[];
 }
 
 export default function App() {
@@ -68,6 +77,7 @@ export default function App() {
   const [isPaused, setIsPaused] = useState(false);
   const [progress, setProgress] = useState<RenderProgress | null>(null);
   const [outputPath, setOutputPath] = useState<string>("");
+  const [musicOrder, setMusicOrder] = useState<number[]>([]);
   const statePath = useRef<string>("");
   const loaded = useRef(false);
 
@@ -82,6 +92,7 @@ export default function App() {
         setMusic(data.music || []);
         setSequence(data.sequence || []);
         if (data.settings) setSettings({ ...defaultSettings(), ...data.settings });
+        if (data.musicOrder) setMusicOrder(data.musicOrder);
       } catch {
         // no saved state, use defaults
       }
@@ -89,10 +100,10 @@ export default function App() {
     })();
   }, []);
 
-  const save = useCallback(async (v: VideoFile[], m: MusicFile[], seq: SequenceItem[], s: RenderSettings) => {
+  const save = useCallback(async (v: VideoFile[], m: MusicFile[], seq: SequenceItem[], s: RenderSettings, mo: number[]) => {
     if (!statePath.current) return;
     const { invoke } = await import("@tauri-apps/api/core");
-    const data: PersistedState = { videos: v, music: m, sequence: seq, settings: s };
+    const data: PersistedState = { videos: v, music: m, sequence: seq, settings: s, musicOrder: mo };
     try {
       await invoke("save_state", { path: statePath.current, data });
     } catch { /* ignore save errors */ }
@@ -100,8 +111,94 @@ export default function App() {
 
   useEffect(() => {
     if (!loaded.current) return;
-    save(videos, music, sequence, settings);
-  }, [videos, music, sequence, settings]);
+    save(videos, music, sequence, settings, musicOrder);
+  }, [videos, music, sequence, settings, musicOrder]);
+
+  // auto-generate when entering render tab
+  useEffect(() => {
+    if (!loaded.current || tab !== "render") return;
+    if (videos.length > 0 && sequence.length === 0) {
+      handleRegenerateVideo();
+    }
+    if (music.length > 0 && musicOrder.length === 0) {
+      handleMusicOrder();
+    }
+  }, [tab]);
+
+  function computeMusicPlaylist(baseOrder: number[]): { order: number[]; total: number } {
+    if (baseOrder.length === 0 || music.length === 0) return { order: [], total: 0 };
+
+    const target = (() => {
+      switch (settings.duration_mode.type) {
+        case "fixed": return settings.duration_mode.value;
+        case "fixed_complete_last_song": return settings.duration_mode.value;
+        case "selected_songs": return music.reduce((s, m) => s + m.duration, 0);
+      }
+    })();
+
+    const order: number[] = [];
+    let acc = 0;
+
+    if (settings.loop_playlist) {
+      outer: while (true) {
+        for (const idx of baseOrder) {
+          order.push(idx);
+          acc += music[idx].duration;
+          if (acc >= target) break outer;
+        }
+      }
+    } else {
+      for (const idx of baseOrder) {
+        order.push(idx);
+        acc += music[idx].duration;
+        if (acc >= target) break;
+      }
+      if (acc < target) {
+        const last = baseOrder[baseOrder.length - 1] ?? 0;
+        while (acc < target) {
+          order.push(last);
+          acc += music[last].duration;
+        }
+      }
+    }
+
+    const total = settings.duration_mode.type === "fixed"
+      ? settings.duration_mode.value
+      : acc;
+
+    return { order, total };
+  }
+
+  async function handleRegenerateVideo() {
+    if (videos.length === 0) return;
+    const { invoke } = await import("@tauri-apps/api/core");
+    try {
+      const seq = await invoke<SequenceItem[]>("generate_sequence", {
+        videos,
+        mode: settings.video_playback_mode,
+        clipDuration: settings.clip_duration,
+        preventDuplicates: settings.prevent_duplicates,
+      });
+      setSequence(seq);
+    } catch (e) {
+      alert(`Failed to regenerate video sequence: ${e}`);
+    }
+  }
+
+  async function handleMusicOrder() {
+    if (music.length === 0) return;
+    const { invoke } = await import("@tauri-apps/api/core");
+    try {
+      const baseOrder = await invoke<number[]>("generate_music_order", {
+        music,
+        mode: settings.music_playback_mode,
+      });
+      const { order } = computeMusicPlaylist(baseOrder);
+      setMusicOrder(order);
+    } catch (e) {
+      alert(`Failed to generate music order: ${e}`);
+    }
+  }
 
   async function handleGenerateSequence() {
     if (videos.length === 0) return;
@@ -114,6 +211,14 @@ export default function App() {
         preventDuplicates: settings.prevent_duplicates,
       });
       setSequence(seq);
+      if (music.length > 0) {
+        const baseOrder = await invoke<number[]>("generate_music_order", {
+          music,
+          mode: settings.music_playback_mode,
+        });
+        const { order } = computeMusicPlaylist(baseOrder);
+        setMusicOrder(order);
+      }
       setTab("render");
     } catch (e) {
       alert(`Failed to generate sequence: ${e}`);
@@ -243,11 +348,50 @@ export default function App() {
         {tab === "render" && (
           <div className="panel">
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              <SequenceDisplay
-                sequence={sequence}
-                totalDuration={sequence.reduce((a, b) => a + b.duration, 0)}
-                onRegenerate={handleGenerateSequence}
-              />
+              <div className="grid-2">
+                <SequenceDisplay
+                  sequence={sequence}
+                  totalDuration={sequence.reduce((a, b) => a + b.duration, 0)}
+                  onRegenerate={handleRegenerateVideo}
+                />
+                <div className="card">
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                    <h3 style={{ margin: 0 }}>🎵 Music Order</h3>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      {musicOrder.length > 0 && (
+                        <span style={{ fontSize: 13, color: "var(--text2)" }}>
+                          Total: {formatDuration(musicOrder.reduce((s, i) => s + (music[i]?.duration || 0), 0))}
+                        </span>
+                      )}
+                      <button onClick={handleMusicOrder}>🔄 Regenerate</button>
+                    </div>
+                  </div>
+                  {musicOrder.length === 0 ? (
+                    <div className="empty-state">No music order generated.</div>
+                  ) : (
+                    <div style={{ maxHeight: 200, overflowY: "auto" }}>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>#</th>
+                            <th>Track</th>
+                            <th>Duration</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {musicOrder.map((idx, i) => (
+                            <tr key={i}>
+                              <td>{i + 1}</td>
+                              <td>{music[idx]?.filename || "?"}</td>
+                              <td>{formatDuration(music[idx]?.duration || 0)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
               <RenderProgressPanel
                 progress={progress}
                 isRendering={isRendering}
