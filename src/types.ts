@@ -20,6 +20,7 @@ export interface SequenceItem {
   start_time: number;
   end_time: number;
   duration: number;
+  is_intro: boolean;
 }
 
 export interface WatermarkSettings {

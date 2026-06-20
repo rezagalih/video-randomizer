@@ -9,6 +9,7 @@ import TransitionSettings from "./components/TransitionSettings";
 import OutputSettings from "./components/OutputSettings";
 import WatermarkSettings from "./components/WatermarkSettings";
 import CutRandomSettings from "./components/CutRandomSettings";
+import IntroImport from "./components/IntroImport";
 import SequenceDisplay from "./components/SequenceDisplay";
 import RenderProgressPanel from "./components/RenderProgress";
 
@@ -80,6 +81,7 @@ interface PersistedState {
   sequence: SequenceItem[];
   settings: RenderSettings;
   musicOrder: number[];
+  introVideo?: VideoFile | null;
 }
 
 export default function App() {
@@ -93,6 +95,7 @@ export default function App() {
   const [progress, setProgress] = useState<RenderProgress | null>(null);
   const [outputPath, setOutputPath] = useState<string>("");
   const [musicOrder, setMusicOrder] = useState<number[]>([]);
+  const [introVideo, setIntroVideo] = useState<VideoFile | null>(null);
   const statePath = useRef<string>("");
   const loaded = useRef(false);
 
@@ -108,6 +111,7 @@ export default function App() {
         setSequence(data.sequence || []);
         if (data.settings) setSettings({ ...defaultSettings(), ...data.settings });
         if (data.musicOrder) setMusicOrder(data.musicOrder);
+        if (data.introVideo) setIntroVideo(data.introVideo);
       } catch {
         // no saved state, use defaults
       }
@@ -115,10 +119,10 @@ export default function App() {
     })();
   }, []);
 
-  const save = useCallback(async (v: VideoFile[], m: MusicFile[], seq: SequenceItem[], s: RenderSettings, mo: number[]) => {
+  const save = useCallback(async (v: VideoFile[], m: MusicFile[], seq: SequenceItem[], s: RenderSettings, mo: number[], iv: VideoFile | null) => {
     if (!statePath.current) return;
     const { invoke } = await import("@tauri-apps/api/core");
-    const data: PersistedState = { videos: v, music: m, sequence: seq, settings: s, musicOrder: mo };
+    const data: PersistedState = { videos: v, music: m, sequence: seq, settings: s, musicOrder: mo, introVideo: iv };
     try {
       await invoke("save_state", { path: statePath.current, data });
     } catch { /* ignore save errors */ }
@@ -126,8 +130,8 @@ export default function App() {
 
   useEffect(() => {
     if (!loaded.current) return;
-    save(videos, music, sequence, settings, musicOrder);
-  }, [videos, music, sequence, settings, musicOrder]);
+    save(videos, music, sequence, settings, musicOrder, introVideo);
+  }, [videos, music, sequence, settings, musicOrder, introVideo]);
 
   // auto-generate when entering render tab
   useEffect(() => {
@@ -196,6 +200,7 @@ export default function App() {
         cutRandomEnabled: settings.cut_random_enabled,
         cutRandomMin: settings.cut_random_min,
         cutRandomMax: settings.cut_random_max,
+        intro: introVideo,
       });
       setSequence(seq);
     } catch (e) {
@@ -230,6 +235,7 @@ export default function App() {
         cutRandomEnabled: settings.cut_random_enabled,
         cutRandomMin: settings.cut_random_min,
         cutRandomMax: settings.cut_random_max,
+        intro: introVideo,
       });
       setSequence(seq);
       if (music.length > 0) {
@@ -350,6 +356,7 @@ export default function App() {
               <VideoImport videos={videos} onVideosChange={setVideos} />
               <MusicImport music={music} onMusicChange={setMusic} />
             </div>
+            <IntroImport video={introVideo} onVideoChange={setIntroVideo} />
           </div>
         )}
         {tab === "settings" && (

@@ -44,6 +44,7 @@ export default function SequenceDisplay({ sequence, totalDuration, onRegenerate 
               <th>Duration</th>
               <th>Cut From</th>
               <th>Cut To</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -54,6 +55,7 @@ export default function SequenceDisplay({ sequence, totalDuration, onRegenerate 
                 <td>{formatDur(item.duration)}</td>
                 <td>{formatDur(item.start_time)}</td>
                 <td>{formatDur(item.end_time)}</td>
+                <td>{item.is_intro ? <span className="badge">Intro</span> : null}</td>
               </tr>
             ))}
           </tbody>

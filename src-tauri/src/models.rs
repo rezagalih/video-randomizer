@@ -25,6 +25,7 @@ pub struct SequenceItem {
     pub start_time: f64,
     pub end_time: f64,
     pub duration: f64,
+    pub is_intro: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
