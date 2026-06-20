@@ -1,0 +1,55 @@
+export interface VideoFile {
+  path: string;
+  filename: string;
+  duration: number;
+  width: number;
+  height: number;
+  fps: number;
+}
+
+export interface MusicFile {
+  path: string;
+  filename: string;
+  duration: number;
+}
+
+export interface SequenceItem {
+  video_path: string;
+  filename: string;
+  order: number;
+  start_time: number;
+  end_time: number;
+  duration: number;
+}
+
+export interface RenderSettings {
+  video_playback_mode: "shuffle" | "sequential";
+  music_playback_mode: "shuffle" | "sequential" | "repeat_single";
+  processing_mode: "segment_loop";
+  duration_mode: { type: "fixed"; value: number } | { type: "fixed_complete_last_song"; value: number } | { type: "selected_songs" };
+  mute_source_audio: boolean;
+  encoding_speed: "fast" | "balanced" | "quality";
+  encoder_mode: "auto" | "hardware" | "software";
+  resolution: { type: "original" } | { type: "custom"; width: number; height: number };
+  fps: { type: "keep_original" } | { type: "custom"; value: number };
+  fade_duration: number;
+  output_filename: string;
+  output_folder: string;
+  loop_playlist: boolean;
+  clip_duration: number;
+  prevent_duplicates: boolean;
+  delete_cache: boolean;
+}
+
+export interface RenderProgress {
+  stage: string;
+  percent: number;
+  elapsed_secs: number;
+  estimated_remaining_secs: number;
+  current_file: string;
+}
+
+export interface ScanResult {
+  videos: VideoFile[];
+  music: MusicFile[];
+}
