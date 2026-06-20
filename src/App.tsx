@@ -8,6 +8,7 @@ import EncodingSettings from "./components/EncodingSettings";
 import TransitionSettings from "./components/TransitionSettings";
 import OutputSettings from "./components/OutputSettings";
 import WatermarkSettings from "./components/WatermarkSettings";
+import CutRandomSettings from "./components/CutRandomSettings";
 import SequenceDisplay from "./components/SequenceDisplay";
 import RenderProgressPanel from "./components/RenderProgress";
 
@@ -48,6 +49,9 @@ function defaultSettings(): RenderSettings {
       position_y: 50,
       scale: 10,
     },
+    cut_random_enabled: false,
+    cut_random_min: 3,
+    cut_random_max: 5,
   };
 }
 
@@ -57,6 +61,17 @@ function formatDuration(s: number): string {
   const sec = Math.floor(s % 60);
   if (h > 0) return `${h}h${m}m`;
   return `${m}:${sec.toString().padStart(2, "0")}`;
+}
+
+function durationModeLabel(mode: RenderSettings["duration_mode"]): string {
+  switch (mode.type) {
+    case "fixed":
+      return `Fixed Duration: ${formatDuration(mode.value)}`;
+    case "fixed_complete_last_song":
+      return `Fixed Duration + Complete Last Song: ${formatDuration(mode.value)}`;
+    case "selected_songs":
+      return "Selected Songs Duration";
+  }
 }
 
 interface PersistedState {
@@ -178,6 +193,9 @@ export default function App() {
         mode: settings.video_playback_mode,
         clipDuration: settings.clip_duration,
         preventDuplicates: settings.prevent_duplicates,
+        cutRandomEnabled: settings.cut_random_enabled,
+        cutRandomMin: settings.cut_random_min,
+        cutRandomMax: settings.cut_random_max,
       });
       setSequence(seq);
     } catch (e) {
@@ -209,6 +227,9 @@ export default function App() {
         mode: settings.video_playback_mode,
         clipDuration: settings.clip_duration,
         preventDuplicates: settings.prevent_duplicates,
+        cutRandomEnabled: settings.cut_random_enabled,
+        cutRandomMin: settings.cut_random_min,
+        cutRandomMax: settings.cut_random_max,
       });
       setSequence(seq);
       if (music.length > 0) {
@@ -261,6 +282,7 @@ export default function App() {
         sequence,
         settings,
         onEvent: channel,
+        musicOrder: musicOrder.length > 0 ? musicOrder : music.map((_, i) => i),
       });
     } catch (e) {
       setIsRendering(false);
@@ -337,6 +359,7 @@ export default function App() {
                 settings={settings}
                 onChange={setSettings}
               />
+              <CutRandomSettings settings={settings} onChange={setSettings} />
               <DurationSettings settings={settings} onChange={setSettings} />
               <EncodingSettings settings={settings} onChange={setSettings} />
               <TransitionSettings settings={settings} onChange={setSettings} />
@@ -355,7 +378,7 @@ export default function App() {
                   onRegenerate={handleRegenerateVideo}
                 />
                 <div className="card">
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                     <h3 style={{ margin: 0 }}>🎵 Music Order</h3>
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       {musicOrder.length > 0 && (
@@ -365,6 +388,9 @@ export default function App() {
                       )}
                       <button onClick={handleMusicOrder}>🔄 Regenerate</button>
                     </div>
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--text2)", marginBottom: 8 }}>
+                    {durationModeLabel(settings.duration_mode)}
                   </div>
                   {musicOrder.length === 0 ? (
                     <div className="empty-state">No music order generated.</div>

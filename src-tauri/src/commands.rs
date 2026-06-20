@@ -94,6 +94,9 @@ pub fn generate_sequence(
     mode: String,
     clip_duration: f64,
     prevent_duplicates: bool,
+    cut_random_enabled: bool,
+    cut_random_min: f64,
+    cut_random_max: f64,
 ) -> Result<Vec<SequenceItem>, String> {
     let count = videos.len();
     if count == 0 {
@@ -105,6 +108,30 @@ pub fn generate_sequence(
 
     // prevent_duplicates impossible with single video
     let prevent_duplicates = prevent_duplicates && count > 1;
+
+    fn make_item(video: &VideoFile, order: usize, start: f64, end: f64) -> SequenceItem {
+        SequenceItem {
+            video_path: video.path.clone(),
+            filename: video.filename.clone(),
+            order,
+            start_time: start,
+            end_time: end,
+            duration: end - start,
+        }
+    }
+
+    fn pick_cut(video: &VideoFile, enabled: bool, min: f64, max: f64) -> (f64, f64) {
+        if !enabled || video.duration < min {
+            return (0.0, video.duration);
+        }
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        let max_start = (video.duration - min).max(0.0);
+        let start = rng.gen_range(0.0..=max_start);
+        let remain = video.duration - start;
+        let cut = rng.gen_range(min..=max.min(remain));
+        (start, start + cut)
+    }
 
     let mut sequence = Vec::new();
     let mut current_time = 0.0;
@@ -125,16 +152,9 @@ pub fn generate_sequence(
 
         for &idx in &order {
             let video = &videos[idx];
-            let dur = video.duration;
-            sequence.push(SequenceItem {
-                video_path: video.path.clone(),
-                filename: video.filename.clone(),
-                order: sequence.len(),
-                start_time: current_time,
-                end_time: current_time + dur,
-                duration: dur,
-            });
-            current_time += dur;
+            let (start, end) = pick_cut(video, cut_random_enabled, cut_random_min, cut_random_max);
+            sequence.push(make_item(video, sequence.len(), current_time + start, current_time + end));
+            current_time += end - start;
         }
     } else {
         // Multi-round: loop through videos until target duration is reached
@@ -163,16 +183,10 @@ pub fn generate_sequence(
                 }
 
                 let video = &videos[idx];
-                let dur = video.duration;
+                let (start, end) = pick_cut(video, cut_random_enabled, cut_random_min, cut_random_max);
+                let dur = end - start;
 
-                sequence.push(SequenceItem {
-                    video_path: video.path.clone(),
-                    filename: video.filename.clone(),
-                    order: sequence.len(),
-                    start_time: current_time,
-                    end_time: current_time + dur,
-                    duration: dur,
-                });
+                sequence.push(make_item(video, sequence.len(), current_time + start, current_time + end));
 
                 current_time += dur;
                 prev_idx = idx;
@@ -223,6 +237,7 @@ pub async fn start_render(
     sequence: Vec<SequenceItem>,
     settings: RenderSettings,
     on_event: Channel<RenderProgress>,
+    music_order: Vec<usize>,
 ) -> Result<String, String> {
     let renderer = {
         let guard = state.lock().map_err(|e| e.to_string())?;
@@ -230,7 +245,7 @@ pub async fn start_render(
     };
 
     renderer
-        .run_render(&music, &sequence, &settings, move |progress| {
+        .run_render(&music, &sequence, &settings, &music_order, move |progress| {
             let _ = on_event.send(progress);
         })
         .map_err(|e| e.to_string())

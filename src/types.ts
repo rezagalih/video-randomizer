@@ -48,6 +48,9 @@ export interface RenderSettings {
   prevent_duplicates: boolean;
   delete_cache: boolean;
   watermark: WatermarkSettings;
+  cut_random_enabled: boolean;
+  cut_random_min: number;
+  cut_random_max: number;
 }
 
 export interface RenderProgress {

@@ -52,6 +52,7 @@ impl Renderer {
         music: &[MusicFile],
         sequence: &[SequenceItem],
         settings: &RenderSettings,
+        music_order: &[usize],
         progress_cb: impl Fn(RenderProgress),
     ) -> Result<String> {
         self.cancel_flag.store(false, Ordering::SeqCst);
@@ -68,7 +69,7 @@ impl Renderer {
             current_file: String::new(),
             log_lines: vec![],
         });
-        let (music_path, music_dur) = self.build_music_playlist(music, base_target, settings, &progress_cb)?;
+        let (music_path, music_dur) = self.build_music_playlist(music, settings, music_order, &progress_cb)?;
         progress_cb(RenderProgress {
             stage: format!("✓ Music playlist ready ({:.0}s)", music_dur),
             percent: 5.0,
@@ -154,8 +155,8 @@ impl Renderer {
     fn build_music_playlist(
         &self,
         music: &[MusicFile],
-        target: f64,
-        settings: &RenderSettings,
+        _settings: &RenderSettings,
+        order: &[usize],
         progress_cb: &impl Fn(RenderProgress),
     ) -> Result<(String, f64)> {
         progress_cb(RenderProgress {
@@ -172,57 +173,20 @@ impl Renderer {
         let list_path = work.join("music_playlist.txt");
         let list_str = list_path.to_string_lossy().to_string();
 
-        use rand::seq::SliceRandom;
-
-        let order: Vec<usize> = match settings.music_playback_mode {
-            MusicPlaybackMode::Shuffle => {
-                let mut indices: Vec<usize> = (0..music.len()).collect();
-                let mut rng = rand::thread_rng();
-                indices.shuffle(&mut rng);
-                indices
-            }
-            MusicPlaybackMode::RepeatSingle => vec![0],
-            MusicPlaybackMode::Sequential => (0..music.len()).collect(),
-        };
         let mut content = String::new();
         let mut acc = 0.0;
 
-        if settings.loop_playlist {
-            loop {
-                for &idx in &order {
-                    content.push_str(&format!("file '{}'\n", music[idx].path));
-                    acc += music[idx].duration;
-                    if acc >= target {
-                        break;
-                    }
-                }
-                if acc >= target {
-                    break;
-                }
-            }
-        } else {
-            for &idx in &order {
-                content.push_str(&format!("file '{}'\n", music[idx].path));
-                acc += music[idx].duration;
-                if acc >= target {
-                    break;
-                }
-            }
-            if acc < target {
-                let last = *order.last().unwrap_or(&0);
-                while acc < target {
-                    content.push_str(&format!("file '{}'\n", music[last].path));
-                    acc += music[last].duration;
-                }
-            }
+        for &idx in order {
+            content.push_str(&format!("file '{}'\n", music[idx].path));
+            acc += music[idx].duration;
         }
 
         std::fs::write(&list_str, &content)?;
 
-        let actual_dur = match &settings.duration_mode {
+        // use actual total if not fixed
+        let actual_dur = match &_settings.duration_mode {
             DurationMode::Fixed(d) => *d,
-            DurationMode::FixedCompleteLastSong(_) => acc,
-            DurationMode::SelectedSongs => acc,
+            _ => acc,
         };
 
         Ok((list_str, actual_dur))

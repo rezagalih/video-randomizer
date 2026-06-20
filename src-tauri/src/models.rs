@@ -114,6 +114,9 @@ pub struct RenderSettings {
     pub prevent_duplicates: bool,
     pub delete_cache: bool,
     pub watermark: WatermarkSettings,
+    pub cut_random_enabled: bool,
+    pub cut_random_min: f64,
+    pub cut_random_max: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
