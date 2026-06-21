@@ -99,7 +99,7 @@ impl Renderer {
 
         // Trim intro clip if present (lightweight single trim)
         let intro_clip: Option<String> = if let Some(ii) = &intro_item {
-            let work = std::env::temp_dir().join("video_randomizer/intro_clip.mp4");
+            let work = std::env::temp_dir().join("video_randomizer").join("intro_clip.mp4");
             let out = work.to_string_lossy().to_string();
             (&elapsed_progress_cb)(RenderProgress {
                 stage: "Trimming intro video".into(), percent: 5.0, elapsed_secs: 0.0,
@@ -239,9 +239,14 @@ impl Renderer {
         self.vf_opts(&mut cmd, settings);
         self.enc_opts(&mut cmd, settings);
         cmd.arg(output);
-        let child = cmd.stdout(Stdio::null()).stderr(Stdio::null()).spawn()
-            .context("Failed to spawn ffmpeg for trim")?;
-        let _ = child.wait_with_output()?;
+        let output = cmd.stdout(Stdio::null()).stderr(Stdio::piped()).spawn()
+            .context("Failed to spawn ffmpeg for trim")?
+            .wait_with_output()
+            .context("Failed to wait for ffmpeg trim")?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            bail!("Trim gagal: {}", stderr.trim());
+        }
         Ok(())
     }
 
@@ -512,7 +517,7 @@ impl Renderer {
             cmd.arg("-progress").arg("pipe:1").arg(output);
             self.progress_run(cmd, 0.0, "Adding crossfade", progress_cb)?;
         } else {
-            let concat_list = std::env::temp_dir().join("video_randomizer/concat_list.txt");
+            let concat_list = std::env::temp_dir().join("video_randomizer").join("concat_list.txt");
             let mut content = String::new();
             for c in clips {
                 content.push_str(&format!("file '{}'\n", c));
@@ -602,7 +607,7 @@ impl Renderer {
         // For >200 loops, fall back to concat demuxer (no crossfade) to
         // avoid too many file descriptors.
         if num > 200 {
-            let list = std::env::temp_dir().join("video_randomizer/loop_fallback.txt");
+            let list = std::env::temp_dir().join("video_randomizer").join("loop_fallback.txt");
             let mut content = String::new();
             for _ in 0..num {
                 content.push_str(&format!("file '{}'\n", segment));
