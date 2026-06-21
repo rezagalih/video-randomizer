@@ -6,15 +6,35 @@ A Tauri v2 desktop app that combines randomized video clips with music playlists
 
 1. **Import videos** — Add video files (mp4, mov, mkv, webm)
 2. **Import music** — Add audio files (mp3, wav, flac, aac, m4a)
-3. **Configure settings** — Choose playback mode, duration, encoding, transitions, random cut
-4. **Render** — Generates a seamless video matching the music duration with crossfade transitions
+3. **Optional intro** — Select a short video to play once before the loop
+4. **Configure settings** — Playback mode, duration, encoding, transitions, random cut, watermark
+5. **Render** — Generates a seamless video matching the music duration with crossfade transitions
 
 ### Render Pipeline
 
-- **Build music playlist** — Shuffle/sequence music to match target duration
-- **Trim video segments** — Optionally cut random footage from each clip
-- **Loop with crossfade** — Loop segments using xfade filter to match music duration
-- **Mux** — Combine video with music audio (with optional watermark overlay)
+```
+                    ┌─ intro clip (trimmed)
+                    │
+trim clips ─────────┤                    ┌─ segment_1 (intro + main, xfade'd)
+                    │  main clips ───────┤
+                    │  (trimmed)         └─ segment_2 (main only, xfade'd) ── loop (xfade'd)
+                    │                                              │
+                    └──────────────────────────────────────────────┘
+                                        │
+                             xfade segment_1 → looped segment_2
+                             (re-encode only ~fdur seconds; rest -c copy)
+                                        │
+                                   mux + music
+                                   (watermark: re-encode, else -c copy)
+```
+
+- **Build music playlist** — Shuffle/sequence/repeat music to match target duration; order shown in table
+- **Trim clips** — Each video trimmed (with optional random cut); intro uses full duration
+- **segment_1** — Intro + main clips concatenated with crossfade (if fade > 0)
+- **segment_2** — Main clips only, crossfaded together (for clean looping)
+- **Loop** — segment_2 is looped with xfade to fill remaining time
+- **Efficient xfade** — intro→looped merge only re-encodes `fdur` seconds; the rest uses `-c copy` (zero-copy concat demuxer)
+- **Mux** — Combine video with music audio; watermark forces re-encode, otherwise `-c copy`
 
 ## Tech Stack
 
@@ -100,11 +120,12 @@ No external dependencies needed at runtime.
 ```
 video-randomizer/
 ├── src/                          # React frontend
-│   ├── App.tsx                   # Main app (3 tabs, state, render flow)
+│   ├── App.tsx                   # Main app (3 tabs, state, render flow, music order table)
 │   ├── types.ts                  # TypeScript interfaces
 │   └── components/
 │       ├── VideoImport.tsx
 │       ├── MusicImport.tsx
+│       ├── IntroImport.tsx       # Single video picker for intro
 │       ├── PlaybackStrategy.tsx
 │       ├── DurationSettings.tsx
 │       ├── EncodingSettings.tsx
