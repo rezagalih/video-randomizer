@@ -28,6 +28,19 @@ export default function OutputSettings({ settings, onChange }: Props) {
     onChange({ ...settings, ...d });
   }
 
+  function resetFilename() {
+    const now = new Date();
+    const ts =
+      now.getFullYear().toString() +
+      (now.getMonth() + 1).toString().padStart(2, "0") +
+      now.getDate().toString().padStart(2, "0") +
+      "_" +
+      now.getHours().toString().padStart(2, "0") +
+      now.getMinutes().toString().padStart(2, "0") +
+      now.getSeconds().toString().padStart(2, "0");
+    onChange({ ...settings, output_filename: `${ts}.mp4` });
+  }
+
   return (
     <div className="card">
       <h3>💾 Output Settings</h3>
@@ -46,13 +59,18 @@ export default function OutputSettings({ settings, onChange }: Props) {
       </div>
       <div className="form-group">
         <label>Output Filename</label>
-        <input
-          type="text"
-          value={settings.output_filename}
-          onChange={(e) => update({ output_filename: e.target.value })}
-        />
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input
+            type="text"
+            value={settings.output_filename}
+            onChange={(e) => update({ output_filename: e.target.value })}
+            style={{ flex: 1 }}
+          />
+          <button onClick={resetFilename}>🔄 Reset Default</button>
+        </div>
         <div style={{ fontSize: 12, color: "var(--text2)", marginTop: 4 }}>
-          Use: timestamp, music_name, custom text. Default: YYYYMMDD_HHMMSS
+          Use: timestamp, music_name, custom text. Default: YYYYMMDD_HHMMSS.mp4.
+          Extension will be added automatically if missing.
         </div>
       </div>
       <div className="form-group">

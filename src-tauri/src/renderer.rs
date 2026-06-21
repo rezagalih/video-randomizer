@@ -656,7 +656,9 @@ impl Renderer {
     ) -> Result<String> {
         let out_dir = std::path::Path::new(&settings.output_folder);
         std::fs::create_dir_all(out_dir)?;
-        let out = out_dir.join(&settings.output_filename).to_string_lossy().to_string();
+        let filename = settings.output_filename.trim();
+        let filename = if filename.contains('.') { filename.to_string() } else { format!("{}.mp4", filename) };
+        let out = out_dir.join(&filename).to_string_lossy().to_string();
 
         progress_cb(RenderProgress {
             stage: "Muxing video & audio".into(),
