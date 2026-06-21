@@ -56,6 +56,10 @@ impl Renderer {
         self.paused_flag.load(Ordering::SeqCst)
     }
 
+    pub fn ffmpeg_path(&self) -> String {
+        self.ffmpeg_path.clone()
+    }
+
     pub fn run_render(
         &self,
         music: &[MusicFile],

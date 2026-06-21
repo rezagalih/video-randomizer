@@ -12,8 +12,9 @@ import CutRandomSettings from "./components/CutRandomSettings";
 import IntroImport from "./components/IntroImport";
 import SequenceDisplay from "./components/SequenceDisplay";
 import RenderProgressPanel from "./components/RenderProgress";
+import MergerTool from "./components/MergerTool";
 
-type Tab = "import" | "settings" | "render";
+type Tab = "import" | "settings" | "render" | "merger";
 
 function defaultSettings(): RenderSettings {
   const now = new Date();
@@ -354,6 +355,9 @@ export default function App() {
         <button className={tab === "render" ? "active" : ""} onClick={() => setTab("render")}>
           🎬 Render
         </button>
+        <button className={tab === "merger" ? "active" : ""} onClick={() => setTab("merger")}>
+          🔗 Merger
+        </button>
       </div>
       <main>
         {tab === "import" && (
@@ -453,6 +457,11 @@ export default function App() {
                 onOpenFile={handleOpenFile}
               />
             </div>
+          </div>
+        )}
+        {tab === "merger" && (
+          <div className="panel">
+            <MergerTool />
           </div>
         )}
       </main>

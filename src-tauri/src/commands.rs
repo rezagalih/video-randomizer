@@ -277,6 +277,129 @@ pub fn pause_render(state: State<'_, Mutex<AppState>>) -> Result<bool, String> {
 }
 
 #[tauri::command]
+pub async fn merge_videos(
+    state: State<'_, Mutex<AppState>>,
+    videos: Vec<String>,
+    output: String,
+    on_event: Channel<MergeProgress>,
+) -> Result<String, String> {
+    if videos.len() < 2 {
+        return Err("Minimal 2 video untuk di-merge".into());
+    }
+
+    let ffmpeg = {
+        let guard = state.lock().map_err(|e| e.to_string())?;
+        guard.renderer.ffmpeg_path()
+    };
+
+    let tmp_dir = std::env::temp_dir().join("video_randomizer_merge");
+    std::fs::create_dir_all(&tmp_dir).map_err(|e| e.to_string())?;
+
+    // create concat playlist
+    let playlist_path = tmp_dir.join("merge_playlist.txt");
+    {
+        let mut f = std::fs::File::create(&playlist_path).map_err(|e| e.to_string())?;
+        use std::io::Write;
+        for path in &videos {
+            // escape single quotes for FFmpeg
+            let escaped = path.replace('\'', "'\\''");
+            writeln!(f, "file '{}'", escaped).map_err(|e| e.to_string())?;
+        }
+    }
+
+    let output_path = std::path::PathBuf::from(&output);
+    let out_str = output_path.to_string_lossy().to_string();
+
+    let total_dur: f64 = {
+        let guard = state.lock().map_err(|e| e.to_string())?;
+        let ffprobe = guard.ffprobe_path.clone();
+        let mut total = 0.0;
+        for p in &videos {
+            if let Ok(d) = crate::metadata::get_video_duration(p, &ffprobe) {
+                total += d;
+            }
+        }
+        total
+    };
+
+    let _ = on_event.send(MergeProgress {
+        stage: "Merging...".into(),
+        percent: 0.0,
+        elapsed_secs: 0.0,
+        output_path: out_str.clone(),
+    });
+
+    let start = std::time::Instant::now();
+    let mut child = std::process::Command::new(&ffmpeg)
+        .arg("-y")
+        .arg("-f").arg("concat")
+        .arg("-safe").arg("0")
+        .arg("-i").arg(playlist_path.to_string_lossy().to_string())
+        .arg("-c").arg("copy")
+        .arg(&out_str)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Gagal spawn ffmpeg: {}", e))?;
+
+    // read stderr for progress
+    if let Some(stderr) = child.stderr.take() {
+        use std::io::BufRead;
+        let reader = std::io::BufReader::new(stderr);
+        for line in reader.lines() {
+            if let Ok(line) = line {
+                // parse time=HH:MM:SS.MS from ffmpeg output
+                if let Some(time_str) = line.split("time=").nth(1) {
+                    let time_str = time_str.split_whitespace().next().unwrap_or("");
+                    if let Some(secs) = parse_ffmpeg_time(time_str) {
+                        let pct = if total_dur > 0.0 {
+                            ((secs / total_dur) * 100.0).min(99.0)
+                        } else {
+                            0.0
+                        };
+                        let _ = on_event.send(MergeProgress {
+                            stage: "Merging...".into(),
+                            percent: pct,
+                            elapsed_secs: start.elapsed().as_secs_f64(),
+                            output_path: out_str.clone(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    let status = child.wait().map_err(|e| format!("Gagal wait ffmpeg: {}", e))?;
+    if !status.success() {
+        return Err(format!("FFmpeg gagal: exit code {:?}", status.code()));
+    }
+
+    let _ = on_event.send(MergeProgress {
+        stage: "Complete".into(),
+        percent: 100.0,
+        elapsed_secs: start.elapsed().as_secs_f64(),
+        output_path: out_str.clone(),
+    });
+
+    // clean up temp
+    let _ = std::fs::remove_dir_all(&tmp_dir);
+
+    Ok(out_str)
+}
+
+fn parse_ffmpeg_time(s: &str) -> Option<f64> {
+    let parts: Vec<&str> = s.split(':').collect();
+    if parts.len() == 3 {
+        let h: f64 = parts[0].parse().ok()?;
+        let m: f64 = parts[1].parse().ok()?;
+        let sec: f64 = parts[2].parse().ok()?;
+        Some(h * 3600.0 + m * 60.0 + sec)
+    } else {
+        None
+    }
+}
+
+#[tauri::command]
 pub fn open_folder(path: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     let status = std::process::Command::new("open")

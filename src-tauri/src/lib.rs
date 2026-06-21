@@ -72,6 +72,7 @@ pub fn run() {
             commands::save_state,
             commands::load_state,
             commands::open_folder,
+            commands::merge_videos,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

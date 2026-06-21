@@ -129,3 +129,11 @@ pub struct RenderProgress {
     pub current_file: String,
     pub log_lines: Vec<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MergeProgress {
+    pub stage: String,
+    pub percent: f64,
+    pub elapsed_secs: f64,
+    pub output_path: String,
+}

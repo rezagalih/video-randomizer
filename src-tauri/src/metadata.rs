@@ -100,6 +100,19 @@ pub fn get_music_metadata(path: &str, ffprobe_path: &str) -> Result<MusicFile> {
     })
 }
 
+pub fn get_video_duration(path: &str, ffprobe_path: &str) -> Result<f64> {
+    let output = Command::new(ffprobe_path)
+        .args(["-v", "quiet", "-print_format", "json", "-show_format", path])
+        .output()
+        .context("Failed to execute ffprobe")?;
+    let json: Value = serde_json::from_slice(&output.stdout).context("Failed to parse ffprobe output")?;
+    let dur: f64 = json["format"]["duration"]
+        .as_str()
+        .and_then(|d| d.parse().ok())
+        .unwrap_or(0.0);
+    Ok(dur)
+}
+
 pub fn validate_video_file(path: &str) -> bool {
     let ext = std::path::Path::new(path)
         .extension()

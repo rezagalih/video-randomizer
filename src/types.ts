@@ -67,3 +67,10 @@ export interface ScanResult {
   videos: VideoFile[];
   music: MusicFile[];
 }
+
+export interface MergeProgress {
+  stage: string;
+  percent: number;
+  elapsed_secs: number;
+  output_path: string;
+}
