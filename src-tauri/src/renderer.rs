@@ -233,10 +233,8 @@ impl Renderer {
             .arg("-t").arg(&item.duration.to_string());
         if settings.mute_source_audio { cmd.arg("-an"); }
         self.vf_opts(&mut cmd, settings);
-        cmd.arg("-c:v").arg("libx264")
-            .arg("-preset").arg("ultrafast")
-            .arg("-crf").arg("23")
-            .arg(output);
+        self.enc_opts(&mut cmd, settings);
+        cmd.arg(output);
         let child = cmd.stdout(Stdio::null()).stderr(Stdio::null()).spawn()
             .context("Failed to spawn ffmpeg for trim")?;
         let _ = child.wait_with_output()?;
@@ -734,18 +732,25 @@ impl Renderer {
     }
 
     fn enc_opts(&self, cmd: &mut Command, s: &RenderSettings) {
+        let is_hardware = matches!(&s.encoder_mode, EncoderMode::Auto | EncoderMode::Hardware);
+
+        #[cfg(target_os = "macos")]
+        if is_hardware {
+            cmd.args(["-c:v", "h264_videotoolbox", "-b:v", "5M"]);
+            return;
+        }
+
+        #[cfg(target_os = "windows")]
+        if is_hardware {
+            cmd.args(["-c:v", "h264_nvenc", "-b:v", "5M"]);
+            return;
+        }
+
         let preset = match s.encoding_speed {
             EncodingSpeed::Fast => "ultrafast",
             EncodingSpeed::Balanced => "medium",
             EncodingSpeed::Quality => "veryslow",
         };
-
-        #[cfg(target_os = "macos")]
-        if matches!(&s.encoder_mode, EncoderMode::Auto | EncoderMode::Hardware) {
-            cmd.args(["-c:v", "h264_videotoolbox", "-b:v", "5M"]);
-            return;
-        }
-
         cmd.args(["-c:v", "libx264", "-preset", preset, "-crf", "23"]);
     }
 
