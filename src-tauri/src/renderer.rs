@@ -39,12 +39,17 @@ impl Renderer {
     pub fn toggle_pause(&self) {
         let was_paused = self.paused_flag.load(Ordering::SeqCst);
         self.paused_flag.store(!was_paused, Ordering::SeqCst);
+        #[cfg(unix)]
         if let Ok(guard) = self.current_child.lock() {
             if let Some(ref child) = *guard {
                 let signal = if was_paused { libc::SIGCONT } else { libc::SIGSTOP };
                 unsafe { libc::kill(child.id() as i32, signal); }
             }
         }
+        // On Windows, the child process continues running — pause only stops
+        // the progress loop on the Rust side from checking further.
+        #[cfg(windows)]
+        let _ = was_paused;
     }
 
     pub fn paused(&self) -> bool {
@@ -735,10 +740,8 @@ impl Renderer {
             EncodingSpeed::Quality => "veryslow",
         };
 
-        let use_hardware = matches!(&s.encoder_mode, EncoderMode::Auto | EncoderMode::Hardware);
-
         #[cfg(target_os = "macos")]
-        if use_hardware {
+        if matches!(&s.encoder_mode, EncoderMode::Auto | EncoderMode::Hardware) {
             cmd.args(["-c:v", "h264_videotoolbox", "-b:v", "5M"]);
             return;
         }
