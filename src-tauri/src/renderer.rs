@@ -297,10 +297,9 @@ impl Renderer {
             std::fs::write(&list, &content)?;
             let mut cmd = Command::new(&self.ffmpeg_path);
             cmd.arg("-y").arg("-f").arg("concat").arg("-safe").arg("0")
-                .arg("-i").arg(&list);
-            self.vf_opts(&mut cmd, settings);
-            self.enc_opts(&mut cmd, settings);
-            cmd.arg("-progress").arg("pipe:1").arg(&out_s);
+                .arg("-i").arg(&list)
+                .arg("-c").arg("copy")
+                .arg("-progress").arg("pipe:1").arg(&out_s);
             self.progress_run(cmd, 0.0, "Merging video segments", progress_cb)?;
             return Ok(out_s);
         }
@@ -369,10 +368,9 @@ impl Renderer {
             std::fs::write(&list, &content)?;
             let mut cmd = Command::new(&self.ffmpeg_path);
             cmd.arg("-y").arg("-f").arg("concat").arg("-safe").arg("0")
-                .arg("-i").arg(&list);
-            self.vf_opts(&mut cmd, settings);
-            self.enc_opts(&mut cmd, settings);
-            cmd.arg("-progress").arg("pipe:1").arg(&out_s);
+                .arg("-i").arg(&list)
+                .arg("-c").arg("copy")
+                .arg("-progress").arg("pipe:1").arg(&out_s);
             self.progress_run(cmd, 0.0, "Merging xfade with full video", progress_cb)?;
         }
 
@@ -518,10 +516,9 @@ impl Renderer {
             cmd.arg("-y")
                 .arg("-f").arg("concat")
                 .arg("-safe").arg("0")
-                .arg("-i").arg(&concat_list);
-            self.vf_opts(&mut cmd, settings);
-            self.enc_opts(&mut cmd, settings);
-            cmd.arg("-progress").arg("pipe:1").arg(output);
+                .arg("-i").arg(&concat_list)
+                .arg("-c").arg("copy")
+                .arg("-progress").arg("pipe:1").arg(output);
             self.progress_run(cmd, 0.0, "Concatenating clips", progress_cb)?;
         }
         Ok(())
@@ -573,10 +570,9 @@ impl Renderer {
                 .arg("-f").arg("concat")
                 .arg("-safe").arg("0")
                 .arg("-i").arg(&list)
-                .arg("-t").arg(&target.to_string());
-            self.vf_opts(&mut cmd, settings);
-            self.enc_opts(&mut cmd, settings);
-            cmd.arg("-progress").arg("pipe:1").arg(&out);
+                .arg("-t").arg(&target.to_string())
+                .arg("-c").arg("copy")
+                .arg("-progress").arg("pipe:1").arg(&out);
             self.progress_run(cmd, target, "Looping segment", progress_cb)?;
         } else {
             // Crossfade between loops using xfade filter chain
@@ -611,10 +607,9 @@ impl Renderer {
                 .arg("-f").arg("concat")
                 .arg("-safe").arg("0")
                 .arg("-i").arg(&list)
-                .arg("-t").arg(&target.to_string());
-            self.vf_opts(&mut cmd, settings);
-            self.enc_opts(&mut cmd, settings);
-            cmd.arg("-progress").arg("pipe:1").arg(output);
+                .arg("-t").arg(&target.to_string())
+                .arg("-c").arg("copy")
+                .arg("-progress").arg("pipe:1").arg(output);
             return self.progress_run(cmd, target, "Looping (fallback)", progress_cb);
         }
 
