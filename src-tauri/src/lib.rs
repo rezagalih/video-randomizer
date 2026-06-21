@@ -3,11 +3,39 @@ mod metadata;
 mod models;
 mod renderer;
 
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use commands::AppState;
 use renderer::Renderer;
 use tauri::Manager;
+
+#[cfg(windows)]
+fn resolve_binary(app: &tauri::App, name: &str) -> PathBuf {
+    let exe_name = format!("{}.exe", name);
+    // On Windows, check exe directory first (side-by-side: video.exe + ffmpeg.exe)
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let candidate = dir.join(&exe_name);
+            if candidate.exists() {
+                return candidate;
+            }
+        }
+    }
+    // Fall back to resource bundle (installer-extracted resources/bin/)
+    if let Ok(p) = app.path().resolve(&format!("bin/{}", name), tauri::path::BaseDirectory::Resource) {
+        return p;
+    }
+    PathBuf::from(exe_name)
+}
+
+#[cfg(not(windows))]
+fn resolve_binary(app: &tauri::App, name: &str) -> PathBuf {
+    // macOS / Linux: bundled inside .app Resources/bin/
+    app.path()
+        .resolve(&format!("bin/{}", name), tauri::path::BaseDirectory::Resource)
+        .unwrap_or_else(|_| PathBuf::from(name))
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -16,15 +44,8 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            // resolve bundled ffmpeg/ffprobe paths
-            let ffmpeg_path = app
-                .path()
-                .resolve("bin/ffmpeg", tauri::path::BaseDirectory::Resource)
-                .unwrap_or_else(|_| "ffmpeg".into());
-            let ffprobe_path = app
-                .path()
-                .resolve("bin/ffprobe", tauri::path::BaseDirectory::Resource)
-                .unwrap_or_else(|_| "ffprobe".into());
+            let ffmpeg_path = resolve_binary(app, "ffmpeg");
+            let ffprobe_path = resolve_binary(app, "ffprobe");
 
             let state = AppState {
                 renderer: Arc::new(Renderer::new(

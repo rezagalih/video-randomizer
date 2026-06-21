@@ -4,9 +4,11 @@ import { MusicFile, ScanResult } from "../types";
 interface Props {
   music: MusicFile[];
   onMusicChange: (m: MusicFile[]) => void;
+  musicFolders: string[];
+  onMusicFoldersChange: (f: string[]) => void;
 }
 
-export default function MusicImport({ music, onMusicChange }: Props) {
+export default function MusicImport({ music, onMusicChange, musicFolders, onMusicFoldersChange }: Props) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
 
@@ -32,9 +34,18 @@ export default function MusicImport({ music, onMusicChange }: Props) {
       const existing = new Set(music.map((m) => m.path));
       const newMusic = result.music.filter((m) => !existing.has(m.path));
       onMusicChange([...music, ...newMusic]);
+      if (!musicFolders.includes(folder as string)) {
+        onMusicFoldersChange([...musicFolders, folder as string]);
+      }
     } finally {
       setLoading(false);
     }
+  }
+
+  function removeFolder(folder: string) {
+    onMusicFoldersChange(musicFolders.filter((f) => f !== folder));
+    const prefix = folder.endsWith("/") || folder.endsWith("\\") ? folder : folder + "/";
+    onMusicChange(music.filter((m) => !m.path.startsWith(prefix)));
   }
 
   async function addMusic(paths: string[]) {
@@ -90,6 +101,20 @@ export default function MusicImport({ music, onMusicChange }: Props) {
           🗑 Remove All
         </button>
       </div>
+      {musicFolders.length > 0 && (
+        <div style={{ margin: "8px 0", padding: "8px", background: "var(--bg2)", borderRadius: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, color: "var(--text2)" }}>Source Folders:</div>
+          {musicFolders.map((f, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2, fontSize: 13 }}>
+              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📁 {f}</span>
+              <button
+                onClick={() => removeFolder(f)}
+                style={{ padding: "2px 8px", fontSize: 12, background: "none", border: "1px solid var(--border)", borderRadius: 4, cursor: "pointer" }}
+              >✕</button>
+            </div>
+          ))}
+        </div>
+      )}
       {music.length === 0 ? (
         <div className="empty-state">No music imported. Click Import Files or Import Folder to add music.</div>
       ) : (

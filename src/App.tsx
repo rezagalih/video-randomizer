@@ -82,6 +82,8 @@ interface PersistedState {
   settings: RenderSettings;
   musicOrder: number[];
   introVideo?: VideoFile | null;
+  videoFolders?: string[];
+  musicFolders?: string[];
 }
 
 export default function App() {
@@ -96,6 +98,8 @@ export default function App() {
   const [outputPath, setOutputPath] = useState<string>("");
   const [musicOrder, setMusicOrder] = useState<number[]>([]);
   const [introVideo, setIntroVideo] = useState<VideoFile | null>(null);
+  const [videoFolders, setVideoFolders] = useState<string[]>([]);
+  const [musicFolders, setMusicFolders] = useState<string[]>([]);
   const statePath = useRef<string>("");
   const loaded = useRef(false);
 
@@ -112,6 +116,8 @@ export default function App() {
         if (data.settings) setSettings({ ...defaultSettings(), ...data.settings });
         if (data.musicOrder) setMusicOrder(data.musicOrder);
         if (data.introVideo) setIntroVideo(data.introVideo);
+        if (data.videoFolders) setVideoFolders(data.videoFolders);
+        if (data.musicFolders) setMusicFolders(data.musicFolders);
       } catch {
         // no saved state, use defaults
       }
@@ -119,10 +125,10 @@ export default function App() {
     })();
   }, []);
 
-  const save = useCallback(async (v: VideoFile[], m: MusicFile[], seq: SequenceItem[], s: RenderSettings, mo: number[], iv: VideoFile | null) => {
+  const save = useCallback(async (v: VideoFile[], m: MusicFile[], seq: SequenceItem[], s: RenderSettings, mo: number[], iv: VideoFile | null, vf: string[], mf: string[]) => {
     if (!statePath.current) return;
     const { invoke } = await import("@tauri-apps/api/core");
-    const data: PersistedState = { videos: v, music: m, sequence: seq, settings: s, musicOrder: mo, introVideo: iv };
+    const data: PersistedState = { videos: v, music: m, sequence: seq, settings: s, musicOrder: mo, introVideo: iv, videoFolders: vf, musicFolders: mf };
     try {
       await invoke("save_state", { path: statePath.current, data });
     } catch { /* ignore save errors */ }
@@ -130,8 +136,8 @@ export default function App() {
 
   useEffect(() => {
     if (!loaded.current) return;
-    save(videos, music, sequence, settings, musicOrder, introVideo);
-  }, [videos, music, sequence, settings, musicOrder, introVideo]);
+    save(videos, music, sequence, settings, musicOrder, introVideo, videoFolders, musicFolders);
+  }, [videos, music, sequence, settings, musicOrder, introVideo, videoFolders, musicFolders]);
 
   // auto-generate when entering render tab
   useEffect(() => {
@@ -353,8 +359,18 @@ export default function App() {
         {tab === "import" && (
           <div className="panel">
             <div className="grid-2">
-              <VideoImport videos={videos} onVideosChange={setVideos} />
-              <MusicImport music={music} onMusicChange={setMusic} />
+              <VideoImport
+                videos={videos}
+                onVideosChange={setVideos}
+                videoFolders={videoFolders}
+                onVideoFoldersChange={setVideoFolders}
+              />
+              <MusicImport
+                music={music}
+                onMusicChange={setMusic}
+                musicFolders={musicFolders}
+                onMusicFoldersChange={setMusicFolders}
+              />
             </div>
             <IntroImport video={introVideo} onVideoChange={setIntroVideo} />
           </div>

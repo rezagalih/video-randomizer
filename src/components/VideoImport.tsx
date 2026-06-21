@@ -4,9 +4,11 @@ import { VideoFile, ScanResult } from "../types";
 interface Props {
   videos: VideoFile[];
   onVideosChange: (v: VideoFile[]) => void;
+  videoFolders: string[];
+  onVideoFoldersChange: (f: string[]) => void;
 }
 
-export default function VideoImport({ videos, onVideosChange }: Props) {
+export default function VideoImport({ videos, onVideosChange, videoFolders, onVideoFoldersChange }: Props) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
 
@@ -32,9 +34,20 @@ export default function VideoImport({ videos, onVideosChange }: Props) {
       const existing = new Set(videos.map((v) => v.path));
       const newVids = result.videos.filter((v) => !existing.has(v.path));
       onVideosChange([...videos, ...newVids]);
+      // add folder to source list if not already present
+      if (!videoFolders.includes(folder as string)) {
+        onVideoFoldersChange([...videoFolders, folder as string]);
+      }
     } finally {
       setLoading(false);
     }
+  }
+
+  function removeFolder(folder: string) {
+    onVideoFoldersChange(videoFolders.filter((f) => f !== folder));
+    // remove all videos whose path starts with this folder
+    const prefix = folder.endsWith("/") || folder.endsWith("\\") ? folder : folder + "/";
+    onVideosChange(videos.filter((v) => !v.path.startsWith(prefix)));
   }
 
   async function addVideos(paths: string[]) {
@@ -90,6 +103,20 @@ export default function VideoImport({ videos, onVideosChange }: Props) {
           🗑 Remove All
         </button>
       </div>
+      {videoFolders.length > 0 && (
+        <div style={{ margin: "8px 0", padding: "8px", background: "var(--bg2)", borderRadius: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, color: "var(--text2)" }}>Source Folders:</div>
+          {videoFolders.map((f, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2, fontSize: 13 }}>
+              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📁 {f}</span>
+              <button
+                onClick={() => removeFolder(f)}
+                style={{ padding: "2px 8px", fontSize: 12, background: "none", border: "1px solid var(--border)", borderRadius: 4, cursor: "pointer" }}
+              >✕</button>
+            </div>
+          ))}
+        </div>
+      )}
       {videos.length === 0 ? (
         <div className="empty-state">No videos imported. Click Import Files or Import Folder to add videos.</div>
       ) : (
