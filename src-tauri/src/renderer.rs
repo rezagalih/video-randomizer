@@ -910,6 +910,9 @@ impl Renderer {
         };
 
         if !status.success() {
+            if self.cancel_flag.load(Ordering::SeqCst) {
+                bail!("Rendering cancelled");
+            }
             let guard = err_buf.lock().unwrap();
             let err = String::from_utf8_lossy(&guard);
             bail!("FFmpeg failed:\n{}", err);

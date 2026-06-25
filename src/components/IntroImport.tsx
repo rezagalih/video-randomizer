@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { VideoFile } from "../types";
 
 interface Props {
@@ -6,6 +7,16 @@ interface Props {
 }
 
 export default function IntroImport({ video, onVideoChange }: Props) {
+  const [videoSrc, setVideoSrc] = useState("");
+
+  useEffect(() => {
+    if (!video) { setVideoSrc(""); return; }
+    (async () => {
+      const { convertFileSrc } = await import("@tauri-apps/api/core");
+      setVideoSrc(convertFileSrc(video.path));
+    })();
+  }, [video?.path]);
+
   async function pickFile() {
     const { open } = await import("@tauri-apps/plugin-dialog");
     const file = await open({
@@ -48,9 +59,20 @@ export default function IntroImport({ video, onVideoChange }: Props) {
         )}
       </div>
       {video && (
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}
+          onDoubleClick={async () => {
+            const { invoke } = await import("@tauri-apps/api/core");
+            try { await invoke("open_folder", { path: video.path }); } catch {}
+          }}
+        >
           <div className="video-thumb" style={{ width: 80, height: 50, background: "#333", borderRadius: 4, overflow: "hidden", flexShrink: 0 }}>
-            <video src={video.path} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            {videoSrc && (
+              <video
+                src={videoSrc}
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                muted
+              />
+            )}
           </div>
           <div>
             <div style={{ fontWeight: 600 }}>{video.filename}</div>

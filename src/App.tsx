@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { VideoFile, MusicFile, SequenceItem, RenderSettings, RenderProgress } from "./types";
+import { VideoFile, MusicFile, SequenceItem, RenderSettings, RenderProgress, QueueItem, QueueStatus } from "./types";
 import VideoImport from "./components/VideoImport";
 import MusicImport from "./components/MusicImport";
 import PlaybackStrategy from "./components/PlaybackStrategy";
@@ -12,6 +12,7 @@ import CutRandomSettings from "./components/CutRandomSettings";
 import IntroImport from "./components/IntroImport";
 import SequenceDisplay from "./components/SequenceDisplay";
 import RenderProgressPanel from "./components/RenderProgress";
+import QueuePanel from "./components/QueuePanel";
 import MergerTool from "./components/MergerTool";
 
 type Tab = "import" | "settings" | "render" | "merger";
@@ -101,6 +102,10 @@ export default function App() {
   const [introVideo, setIntroVideo] = useState<VideoFile | null>(null);
   const [videoFolders, setVideoFolders] = useState<string[]>([]);
   const [musicFolders, setMusicFolders] = useState<string[]>([]);
+  const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+  const [isQueueRunning, setIsQueueRunning] = useState(false);
+  const queueCancelledRef = useRef(false);
   const statePath = useRef<string>("");
   const loaded = useRef(false);
 
@@ -259,7 +264,7 @@ export default function App() {
     }
   }
 
-  async function handleStartRender() {
+  function handleAddToQueue() {
     if (sequence.length === 0) {
       alert("Generate a video sequence first.");
       return;
@@ -273,39 +278,124 @@ export default function App() {
       return;
     }
 
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+    // dedup filename against existing pending jobs
+    const pendingNames = new Set(
+      queue.filter(j => j.status === "pending").map(j => j.settings.output_filename)
+    );
+    let filename = settings.output_filename || "untitled.mp4";
+    if (pendingNames.has(filename)) {
+      const dotIdx = filename.lastIndexOf(".");
+      const base = dotIdx > 0 ? filename.slice(0, dotIdx) : filename;
+      const ext = dotIdx > 0 ? filename.slice(dotIdx) : "";
+      let counter = 1;
+      while (pendingNames.has(`${base} (${counter})${ext}`)) {
+        counter++;
+      }
+      filename = `${base} (${counter})${ext}`;
+    }
+    const jobSettings = filename !== settings.output_filename
+      ? { ...settings, output_filename: filename }
+      : { ...settings };
+
+    const newItem: QueueItem = {
+      id,
+      name: filename,
+      music: music,
+      sequence: sequence,
+      settings: jobSettings,
+      musicOrder: musicOrder.length > 0 ? musicOrder : music.map((_, i) => i),
+      status: "pending",
+    };
+    setQueue(prev => [...prev, newItem]);
+  }
+
+  async function handleStartQueue() {
+    const pending = queue.filter(j => j.status === "pending");
+    if (pending.length === 0) return;
+
+    setIsQueueRunning(true);
     setIsRendering(true);
     setIsPaused(false);
     setProgress(null);
     setOutputPath("");
+    queueCancelledRef.current = false;
 
-    const { invoke, Channel } = await import("@tauri-apps/api/core");
+    for (const job of pending) {
+      if (queueCancelledRef.current) break;
 
-    const channel = new Channel<RenderProgress>();
-    channel.onmessage = (p) => {
-      setProgress(p);
-      if (p.stage === "Complete") {
-        setOutputPath(p.current_file);
-        setIsRendering(false);
+      setCurrentJobId(job.id);
+      setQueue(prev => prev.map(j => j.id === job.id ? { ...j, status: "rendering" as QueueStatus } : j));
+
+      const { invoke, Channel } = await import("@tauri-apps/api/core");
+      const channel = new Channel<RenderProgress>();
+      channel.onmessage = (p) => {
+        setProgress(p);
+        if (p.stage === "Complete") {
+          setOutputPath(p.current_file);
+        }
+      };
+
+      try {
+        const result = await invoke<string>("start_render", {
+          music: job.music,
+          sequence: job.sequence,
+          settings: job.settings,
+          onEvent: channel,
+          musicOrder: job.musicOrder,
+        });
+        setQueue(prev => prev.map(j => j.id === job.id ? {
+          ...j, status: "completed" as QueueStatus, outputPath: result,
+        } : j));
+        setOutputPath(result);
+      } catch (e) {
+        const cancelled = queueCancelledRef.current;
+        const msg = String(e);
+        const clean = /cancelled/i.test(msg) ? "Cancelled by user" : msg.length > 200 ? msg.slice(0, 200) + "..." : msg;
+        setQueue(prev => prev.map(j => j.id === job.id ? {
+          ...j,
+          status: (cancelled ? "cancelled" : "failed") as QueueStatus,
+          error: clean,
+        } : j));
+        if (cancelled) break;
       }
-    };
-
-    try {
-      await invoke<string>("start_render", {
-        music,
-        sequence,
-        settings,
-        onEvent: channel,
-        musicOrder: musicOrder.length > 0 ? musicOrder : music.map((_, i) => i),
-      });
-    } catch (e) {
-      setIsRendering(false);
-      alert(`Render failed: ${e}`);
     }
+
+    setCurrentJobId(null);
+    setIsQueueRunning(false);
+    setIsRendering(false);
+    queueCancelledRef.current = false;
+  }
+
+  function handleRemoveFromQueue(id: string) {
+    setQueue(prev => prev.filter(j => j.id !== id));
+  }
+
+  function handleMoveUp(id: string) {
+    setQueue(prev => {
+      const idx = prev.findIndex(j => j.id === id);
+      if (idx <= 0) return prev;
+      const next = [...prev];
+      [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+      return next;
+    });
+  }
+
+  function handleMoveDown(id: string) {
+    setQueue(prev => {
+      const idx = prev.findIndex(j => j.id === id);
+      if (idx < 0 || idx >= prev.length - 1) return prev;
+      const next = [...prev];
+      [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+      return next;
+    });
   }
 
   async function handleCancel() {
     const { invoke } = await import("@tauri-apps/api/core");
     await invoke("cancel_render");
+    queueCancelledRef.current = true;
     setIsRendering(false);
     setIsPaused(false);
   }
@@ -376,7 +466,6 @@ export default function App() {
                 onMusicFoldersChange={setMusicFolders}
               />
             </div>
-            <IntroImport video={introVideo} onVideoChange={setIntroVideo} />
           </div>
         )}
         {tab === "settings" && (
@@ -390,7 +479,6 @@ export default function App() {
               <DurationSettings settings={settings} onChange={setSettings} />
               <EncodingSettings settings={settings} onChange={setSettings} />
               <TransitionSettings settings={settings} onChange={setSettings} />
-              <OutputSettings settings={settings} onChange={setSettings} />
               <WatermarkSettings settings={settings} onChange={setSettings} videos={videos} />
             </div>
           </div>
@@ -445,6 +533,20 @@ export default function App() {
                   )}
                 </div>
               </div>
+              <IntroImport video={introVideo} onVideoChange={setIntroVideo} />
+              <QueuePanel
+                queue={queue}
+                isQueueRunning={isQueueRunning}
+                currentJobId={currentJobId}
+                canAdd={sequence.length > 0 && music.length > 0 && !!settings.output_folder}
+                onAddToQueue={handleAddToQueue}
+                onStartQueue={handleStartQueue}
+                onRemove={handleRemoveFromQueue}
+                onMoveUp={handleMoveUp}
+                onMoveDown={handleMoveDown}
+                onCancelQueue={handleCancel}
+              />
+              <OutputSettings settings={settings} onChange={setSettings} />
               <RenderProgressPanel
                 progress={progress}
                 isRendering={isRendering}
@@ -487,10 +589,10 @@ export default function App() {
           <button onClick={() => setTab("settings")}>← Back to Settings</button>
           <button
             className="primary"
-            onClick={handleStartRender}
-            disabled={sequence.length === 0 || music.length === 0}
+            onClick={handleAddToQueue}
+            disabled={sequence.length === 0 || music.length === 0 || !settings.output_folder}
           >
-            ▶ Start Render
+            + Add to Queue
           </button>
         </div>
       )}
@@ -499,7 +601,7 @@ export default function App() {
           <button onClick={() => setTab("settings")}>← Back to Settings</button>
           <button onClick={handleOpenFile}>▶ Open File</button>
           <button onClick={handleOpenFolder}>📂 Open Folder</button>
-          <button className="primary" onClick={handleStartRender}>▶ Render Again</button>
+          <button className="primary" onClick={handleAddToQueue}>+ Add to Queue</button>
         </div>
       )}
     </>

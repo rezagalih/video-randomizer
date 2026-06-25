@@ -74,3 +74,17 @@ export interface MergeProgress {
   elapsed_secs: number;
   output_path: string;
 }
+
+export type QueueStatus = "pending" | "rendering" | "completed" | "failed" | "cancelled";
+
+export interface QueueItem {
+  id: string;
+  name: string;
+  music: MusicFile[];
+  sequence: SequenceItem[];
+  settings: RenderSettings;
+  musicOrder: number[];
+  status: QueueStatus;
+  outputPath?: string;
+  error?: string;
+}
