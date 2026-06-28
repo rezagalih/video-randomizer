@@ -365,7 +365,7 @@ impl Renderer {
             cmd.arg("-filter_complex").arg(&filter).arg("-map").arg("[vout]");
             self.enc_opts(&mut cmd, settings);
             cmd.arg("-progress").arg("pipe:1").arg(&xfade_clip_s);
-            self.progress_run(cmd, fdur, "Crossfading intro with main video", progress_cb)?;
+            self.progress_run(cmd, fdur, "Crossfading segment boundary", progress_cb)?;
         }
 
         // Step 4: concat first[0..cut_start] + xfade_clip + second[fdur..] (zero-copy)
@@ -383,7 +383,7 @@ impl Renderer {
                 .arg("-i").arg(&list)
                 .arg("-c").arg("copy")
                 .arg("-progress").arg("pipe:1").arg(&out_s);
-            self.progress_run(cmd, 0.0, "Merging xfade with full video", progress_cb)?;
+            self.progress_run(cmd, 0.0, "Stitching crossfade into segment", progress_cb)?;
         }
 
         Ok(out_s)
@@ -480,42 +480,41 @@ impl Renderer {
         let n = clips.len();
         let fdur = settings.fade_duration;
 
-        progress_cb(RenderProgress {
-            stage: "Adding crossfade transitions".into(),
-            percent: 40.0,
-            elapsed_secs: 0.0,
-            estimated_remaining_secs: 0.0,
-            current_file: String::new(),
-            log_lines: vec![],
-        });
-
         if fdur > 0.0 && n > 1 {
-            let mut cmd = Command::new(&self.ffmpeg_path);
-            cmd.arg("-y");
-            for c in clips { cmd.arg("-i").arg(c); }
+            // Optimized path: applies xfade_two iteratively between each pair.
+            // Each xfade_two call only re-encodes ~fdur seconds (the overlap);
+            // the rest is stream-copied via concat demuxer.
+            let work = std::env::temp_dir().join("video_randomizer");
+            std::fs::create_dir_all(&work)?;
 
-            let mut filter = String::new();
-            let first_dur = self.clip_dur(&clips[0])?.max(fdur + 0.1);
-            let mut offset = first_dur - fdur;
+            let mut current = clips[0].clone();
 
-            filter.push_str(&format!(
-                "[0:v][1:v]xfade=transition=fade:duration={}:offset={}[t1];", fdur, offset
-            ));
+            for i in 1..n {
+                self.check_cancel()?;
+                progress_cb(RenderProgress {
+                    stage: format!("Crossfading clip {}/{}", i, n - 1),
+                    percent: 40.0,
+                    elapsed_secs: 0.0,
+                    estimated_remaining_secs: 0.0,
+                    current_file: String::new(),
+                    log_lines: vec![],
+                });
 
-            for i in 2..n {
-                let dur = self.clip_dur(&clips[i - 1])?;
-                filter.push_str(&format!(
-                    "[t{}][{}:v]xfade=transition=fade:duration={}:offset={}[t{}];",
-                    i - 1, i - 1, fdur, offset, i
-                ));
-                offset += dur - fdur;
+                let current_dur = self.clip_dur(&current)?;
+                let next = clips[i].clone();
+
+                let combined = self.xfade_two(&current, &next, current_dur, fdur, settings, progress_cb)?;
+
+                if i < n - 1 {
+                    // Rename intermediate aside so next xfade_two can write fresh
+                    let step_path = work.join(format!("concat_step_{}.mp4", i));
+                    std::fs::rename(&combined, &step_path)?;
+                    current = step_path.to_string_lossy().to_string();
+                } else {
+                    // Last pair: rename straight to final output
+                    std::fs::rename(&combined, output)?;
+                }
             }
-            filter.push_str(&format!("[t{}]format=yuv420p[vout]", n - 1));
-
-            cmd.args(["-filter_complex", &filter, "-map", "[vout]"]);
-            self.enc_opts(&mut cmd, settings);
-            cmd.arg("-progress").arg("pipe:1").arg(output);
-            self.progress_run(cmd, 0.0, "Adding crossfade", progress_cb)?;
         } else {
             let concat_list = std::env::temp_dir().join("video_randomizer").join("concat_list.txt");
             let mut content = String::new();
@@ -604,9 +603,8 @@ impl Renderer {
         progress_cb: &impl Fn(RenderProgress),
         output: &str,
     ) -> Result<()> {
-        // For >200 loops, fall back to concat demuxer (no crossfade) to
-        // avoid too many file descriptors.
-        if num > 200 {
+        // For very large loop counts, fall back to concat demuxer (no crossfade)
+        if num > 1000 {
             let list = std::env::temp_dir().join("video_randomizer").join("loop_fallback.txt");
             let mut content = String::new();
             for _ in 0..num {
@@ -625,37 +623,74 @@ impl Renderer {
             return self.progress_run(cmd, target, "Looping (fallback)", progress_cb);
         }
 
-        // Use N `-i` inputs + xfade chain (no split=N, which causes OOM).
-        let mut cmd = Command::new(&self.ffmpeg_path);
-        cmd.arg("-y");
-        for _ in 0..num {
-            cmd.arg("-i").arg(segment);
+        // Optimized: iterative xfade_two — only ~fdur seconds re-encoded per
+        // iteration, the rest is stream-copied via concat demuxer.
+        let work = std::env::temp_dir().join("video_randomizer");
+        std::fs::create_dir_all(&work)?;
+
+        let mut current = segment.to_string();
+        let mut current_dur = seg_dur;
+        let mut has_output = false;
+
+        for i in 1..num {
+            self.check_cancel()?;
+
+            if current_dur >= target - 0.01 {
+                // Already at target without needing more loops
+                if !has_output {
+                    // No xfade done: stream-copy segment directly to output
+                    let mut cmd = Command::new(&self.ffmpeg_path);
+                    cmd.arg("-y").arg("-i").arg(segment)
+                        .arg("-t").arg(&target.to_string())
+                        .arg("-c").arg("copy")
+                        .arg("-progress").arg("pipe:1").arg(output);
+                    return self.progress_run(cmd, target, "Looping segment", progress_cb);
+                }
+                break;
+            }
+
+            progress_cb(RenderProgress {
+                stage: format!("Looping with crossfade ({}/{})", i, num - 1),
+                percent: 50.0,
+                elapsed_secs: 0.0,
+                estimated_remaining_secs: 0.0,
+                current_file: format!("{} loops", num),
+                log_lines: vec![],
+            });
+
+            let combined = self.xfade_two(&current, segment, current_dur, fdur, settings, progress_cb)?;
+            current_dur = current_dur + seg_dur - fdur;
+
+            if i == num - 1 || current_dur >= target - 0.01 {
+                // Last iteration or target reached: final result to output
+                std::fs::rename(&combined, output)?;
+                has_output = true;
+                break;
+            }
+
+            // Save intermediate for next iteration
+            let step = work.join(format!("loop_step_{}.mp4", i));
+            std::fs::rename(&combined, &step)?;
+            current = step.to_string_lossy().to_string();
         }
 
-        let mut filter = String::new();
-        let mut prev = "0:v".to_string();
-        for i in 1..num {
-            let offset = (i as f64) * (seg_dur - fdur);
-            if i == num - 1 {
-                filter.push_str(&format!(
-                    "[{}][{}:v]xfade=transition=fade:duration={}:offset={}[vout]",
-                    prev, i, fdur, offset
-                ));
-            } else {
-                filter.push_str(&format!(
-                    "[{}][{}:v]xfade=transition=fade:duration={}:offset={}[t{}]; ",
-                    prev, i, fdur, offset, i
-                ));
-                prev = format!("t{}", i);
+        // Truncate to exact target if output overshoots
+        if has_output {
+            let actual = self.clip_dur(output).unwrap_or(current_dur);
+            if actual > target + 0.1 {
+                let trimmed = work.join("loop_trimmed.mp4");
+                let trimmed_s = trimmed.to_string_lossy().to_string();
+                let mut cmd = Command::new(&self.ffmpeg_path);
+                cmd.arg("-y").arg("-i").arg(output)
+                    .arg("-t").arg(&target.to_string())
+                    .arg("-c").arg("copy")
+                    .arg("-progress").arg("pipe:1").arg(&trimmed_s);
+                self.progress_run(cmd, target, "Trimming loop to target", progress_cb)?;
+                std::fs::rename(&trimmed_s, output)?;
             }
         }
 
-        cmd.arg("-filter_complex").arg(&filter)
-            .arg("-map").arg("[vout]")
-            .arg("-t").arg(&target.to_string());
-        self.enc_opts(&mut cmd, settings);
-        cmd.arg("-progress").arg("pipe:1").arg(output);
-        self.progress_run(cmd, target, "Looping with crossfade", progress_cb)
+        Ok(())
     }
 
     fn mux_video_audio(
