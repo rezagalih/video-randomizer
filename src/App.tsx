@@ -14,6 +14,7 @@ import SequenceDisplay from "./components/SequenceDisplay";
 import RenderProgressPanel from "./components/RenderProgress";
 import QueuePanel from "./components/QueuePanel";
 import MergerTool from "./components/MergerTool";
+import WizardModal from "./components/WizardModal";
 
 type Tab = "import" | "settings" | "render" | "merger";
 
@@ -105,6 +106,8 @@ export default function App() {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [isQueueRunning, setIsQueueRunning] = useState(false);
+  const [autoRegenerate, setAutoRegenerate] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
   const queueCancelledRef = useRef(false);
   const statePath = useRef<string>("");
   const loaded = useRef(false);
@@ -264,7 +267,7 @@ export default function App() {
     }
   }
 
-  function handleAddToQueue() {
+  async function handleAddToQueue() {
     if (sequence.length === 0) {
       alert("Generate a video sequence first.");
       return;
@@ -276,6 +279,42 @@ export default function App() {
     if (!settings.output_folder) {
       alert("Select an output folder first.");
       return;
+    }
+
+    let snapSequence = sequence;
+    let snapMusicOrder = musicOrder;
+
+    if (autoRegenerate) {
+      const { invoke } = await import("@tauri-apps/api/core");
+      try {
+        const newSeq = await invoke<SequenceItem[]>("generate_sequence", {
+          videos,
+          mode: settings.video_playback_mode,
+          clipDuration: settings.clip_duration,
+          preventDuplicates: settings.prevent_duplicates,
+          cutRandomEnabled: settings.cut_random_enabled,
+          cutRandomMin: settings.cut_random_min,
+          cutRandomMax: settings.cut_random_max,
+          intro: introVideo,
+        });
+        setSequence(newSeq);
+        snapSequence = newSeq;
+      } catch (e) {
+        alert(`Regenerate failed: ${e}`);
+        return;
+      }
+      try {
+        const baseOrder = await invoke<number[]>("generate_music_order", {
+          music,
+          mode: settings.music_playback_mode,
+        });
+        const { order } = computeMusicPlaylist(baseOrder);
+        setMusicOrder(order);
+        snapMusicOrder = order;
+      } catch (e) {
+        alert(`Music order failed: ${e}`);
+        return;
+      }
     }
 
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -303,9 +342,86 @@ export default function App() {
       id,
       name: filename,
       music: music,
-      sequence: sequence,
+      sequence: snapSequence,
       settings: jobSettings,
-      musicOrder: musicOrder.length > 0 ? musicOrder : music.map((_, i) => i),
+      musicOrder: snapMusicOrder.length > 0 ? snapMusicOrder : music.map((_, i) => i),
+      status: "pending",
+    };
+    setQueue(prev => [...prev, newItem]);
+  }
+
+  async function handleWizardAddJob(data: {
+    intro: VideoFile | null;
+    videos: VideoFile[];
+    music: MusicFile[];
+    musicOrder: number[];
+    durationMode: "fixed" | "fixed_complete_last_song" | "selected_songs";
+    fixedDurationMinutes: number;
+  }) {
+    const { invoke } = await import("@tauri-apps/api/core");
+
+    const seq = await invoke<SequenceItem[]>("generate_sequence", {
+      videos: data.videos,
+      mode: "shuffle",
+      clipDuration: 10,
+      preventDuplicates: true,
+      cutRandomEnabled: false,
+      cutRandomMin: 3,
+      cutRandomMax: 5,
+      intro: data.intro,
+    });
+
+    const durationMode: RenderSettings["duration_mode"] = data.durationMode === "fixed"
+      ? { type: "fixed", value: data.fixedDurationMinutes * 60 }
+      : data.durationMode === "fixed_complete_last_song"
+      ? { type: "fixed_complete_last_song", value: data.fixedDurationMinutes * 60 }
+      : { type: "selected_songs" };
+
+    const now = new Date();
+    const ts =
+      now.getFullYear().toString() +
+      (now.getMonth() + 1).toString().padStart(2, "0") +
+      now.getDate().toString().padStart(2, "0") +
+      "_" +
+      now.getHours().toString().padStart(2, "0") +
+      now.getMinutes().toString().padStart(2, "0") +
+      now.getSeconds().toString().padStart(2, "0");
+    const filename = `${ts}.mp4`;
+
+    const jobSettings: RenderSettings = {
+      ...defaultSettings(),
+      duration_mode: durationMode,
+      output_filename: filename,
+      output_folder: settings.output_folder,
+    };
+
+    function loopPlaylist(baseOrder: number[], music: MusicFile[], targetDuration: number): number[] {
+      if (baseOrder.length === 0 || music.length === 0) return [];
+      const order: number[] = [];
+      let acc = 0;
+      outer: while (true) {
+        for (const idx of baseOrder) {
+          order.push(idx);
+          acc += music[idx].duration;
+          if (acc >= targetDuration) break outer;
+        }
+      }
+      return order;
+    }
+
+    const target = durationMode.type === "selected_songs"
+      ? data.music.reduce((s, m) => s + m.duration, 0)
+      : durationMode.value;
+    const musicOrder = loopPlaylist(data.musicOrder, data.music, target);
+
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const newItem: QueueItem = {
+      id,
+      name: filename,
+      music: data.music,
+      sequence: seq,
+      settings: jobSettings,
+      musicOrder,
       status: "pending",
     };
     setQueue(prev => [...prev, newItem]);
@@ -434,6 +550,10 @@ export default function App() {
           {videos.length > 0 && <span className="badge badge-video">{videos.length} videos</span>}{" "}
           {music.length > 0 && <span className="badge badge-music">{music.length} tracks</span>}
         </span>
+        <div style={{ flex: 1 }} />
+        <button className="primary" onClick={() => setWizardOpen(true)} style={{ fontSize: 12, padding: "6px 14px" }}>
+          ✨ Wizard Mode
+        </button>
       </header>
       <div className="tabs">
         <button className={tab === "import" ? "active" : ""} onClick={() => setTab("import")}>
@@ -486,6 +606,7 @@ export default function App() {
         {tab === "render" && (
           <div className="panel">
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <IntroImport video={introVideo} onVideoChange={setIntroVideo} />
               <div className="grid-2">
                 <SequenceDisplay
                   sequence={sequence}
@@ -533,12 +654,14 @@ export default function App() {
                   )}
                 </div>
               </div>
-              <IntroImport video={introVideo} onVideoChange={setIntroVideo} />
+              <OutputSettings settings={settings} onChange={setSettings} />
               <QueuePanel
                 queue={queue}
                 isQueueRunning={isQueueRunning}
                 currentJobId={currentJobId}
                 canAdd={sequence.length > 0 && music.length > 0 && !!settings.output_folder}
+                autoRegenerate={autoRegenerate}
+                onAutoRegenerateChange={setAutoRegenerate}
                 onAddToQueue={handleAddToQueue}
                 onStartQueue={handleStartQueue}
                 onRemove={handleRemoveFromQueue}
@@ -546,7 +669,6 @@ export default function App() {
                 onMoveDown={handleMoveDown}
                 onCancelQueue={handleCancel}
               />
-              <OutputSettings settings={settings} onChange={setSettings} />
               <RenderProgressPanel
                 progress={progress}
                 isRendering={isRendering}
@@ -587,13 +709,6 @@ export default function App() {
       {tab === "render" && !isRendering && !outputPath && (
         <div className="footer-actions">
           <button onClick={() => setTab("settings")}>← Back to Settings</button>
-          <button
-            className="primary"
-            onClick={handleAddToQueue}
-            disabled={sequence.length === 0 || music.length === 0 || !settings.output_folder}
-          >
-            + Add to Queue
-          </button>
         </div>
       )}
       {tab === "render" && !isRendering && outputPath && (
@@ -601,9 +716,23 @@ export default function App() {
           <button onClick={() => setTab("settings")}>← Back to Settings</button>
           <button onClick={handleOpenFile}>▶ Open File</button>
           <button onClick={handleOpenFolder}>📂 Open Folder</button>
-          <button className="primary" onClick={handleAddToQueue}>+ Add to Queue</button>
         </div>
       )}
+      <footer style={{
+        textAlign: "center",
+        padding: "16px 0 8px",
+        fontSize: 12,
+        color: "var(--text2)",
+        borderTop: "1px solid var(--border)",
+        marginTop: "auto",
+      }}>
+        made with ❤️ powered by opencode - big pickle
+      </footer>
+      <WizardModal
+        open={wizardOpen}
+        onClose={() => setWizardOpen(false)}
+        onAddJob={handleWizardAddJob}
+      />
     </>
   );
 }

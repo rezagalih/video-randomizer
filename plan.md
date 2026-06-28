@@ -262,6 +262,91 @@ Advantages:
 
 ---
 
+# Wizard Mode
+
+Tombol **Wizard Mode** di halaman utama. Saat diklik, muncul popup/modal bertahap (step-by-step).
+
+Tidak mengganggu alur Mode 1 — Segment Loop yang sudah ada.
+
+---
+
+## Step 1 — Intro
+
+Pilih intro video atau lewati (tanpa intro).
+
+Options:
+
+* No Intro
+* Pilih file intro (video)
+
+Jika intro dipilih, clip intro akan ditempatkan di awal master segment.
+
+---
+
+## Step 2 — Pilih Footage
+
+Pilih satu atau beberapa file video / folder footage.
+
+Display setelah import:
+
+| Filename | Duration | Resolution | FPS |
+| -------- | -------- | ---------- | ---- |
+
+---
+
+## Step 3 — Pilih Musik
+
+Pilih lagu:
+
+* Satu atau beberapa file lagu
+* Satu atau beberapa folder lagu
+
+Display setelah import:
+
+| Filename | Duration |
+| -------- | -------- |
+
+---
+
+## Step 4 — Pilih Durasi
+
+Tiga mode durasi:
+
+### Fixed Duration
+
+Output berakhir tepat di durasi yang dipilih.
+
+### Fixed Duration + Complete Last Song
+
+Output diperpanjang sampai lagu terakhir selesai.
+
+### Selected Songs Duration
+
+Output sama dengan total durasi lagu yang dipilih.
+
+---
+
+## Step 5 — Queue & Batch
+
+Setelah semua step selesai, wizard menambahkan job ke dalam antrian.
+
+Antrian menampilkan:
+
+| No | Intro | Footage | Musik | Durasi | Status |
+| -- | ----- | ------- | ----- | ------ | ------ |
+
+Actions:
+
+* Tambah job baru (buka wizard lagi)
+* Hapus job dari antrian
+* Hapus semua job
+* Render satu per satu
+* Render semua (batch)
+
+Setiap job di antrian bisa dirender secara sequential tanpa perlu membuka wizard ulang.
+
+---
+
 # Audio Processing
 
 Music is processed independently from video generation.

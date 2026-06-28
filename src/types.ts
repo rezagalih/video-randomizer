@@ -75,6 +75,14 @@ export interface MergeProgress {
   output_path: string;
 }
 
+export interface WizardSelections {
+  intro: VideoFile | null;
+  videos: VideoFile[];
+  music: MusicFile[];
+  durationMode: "fixed" | "fixed_complete_last_song" | "selected_songs";
+  fixedDurationMinutes: number;
+}
+
 export type QueueStatus = "pending" | "rendering" | "completed" | "failed" | "cancelled";
 
 export interface QueueItem {

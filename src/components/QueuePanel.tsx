@@ -5,6 +5,8 @@ interface Props {
   isQueueRunning: boolean;
   currentJobId: string | null;
   canAdd: boolean;
+  autoRegenerate: boolean;
+  onAutoRegenerateChange: (v: boolean) => void;
   onAddToQueue: () => void;
   onStartQueue: () => void;
   onRemove: (id: string) => void;
@@ -25,6 +27,7 @@ function statusLabel(status: QueueItem["status"]): string {
 
 export default function QueuePanel({
   queue, isQueueRunning, currentJobId, canAdd,
+  autoRegenerate, onAutoRegenerateChange,
   onAddToQueue, onStartQueue, onRemove, onMoveUp, onMoveDown, onCancelQueue,
 }: Props) {
   const pendingCount = queue.filter(j => j.status === "pending").length;
@@ -34,7 +37,15 @@ export default function QueuePanel({
     <div className="card">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <h3 style={{ margin: 0 }}>📋 Render Queue</h3>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={autoRegenerate}
+              onChange={(e) => onAutoRegenerateChange(e.target.checked)}
+            />
+            Auto-regenerate before add
+          </label>
           <button onClick={onAddToQueue} disabled={!canAdd || isProcessing}>
             + Add to Queue
           </button>
