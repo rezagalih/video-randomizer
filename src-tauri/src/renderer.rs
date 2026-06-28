@@ -488,12 +488,22 @@ impl Renderer {
             std::fs::create_dir_all(&work)?;
 
             let mut current = clips[0].clone();
+            let total_steps = (n - 1) as f64;
 
             for i in 1..n {
                 self.check_cancel()?;
+
+                let step_start = 40.0 + 10.0 * (i as f64 - 1.0) / total_steps;
+                let step_end = 40.0 + 10.0 * i as f64 / total_steps;
+
+                let mapped_cb = |p: RenderProgress| {
+                    let mapped = step_start + (step_end - step_start) * p.percent / 100.0;
+                    progress_cb(RenderProgress { percent: mapped, ..p })
+                };
+
                 progress_cb(RenderProgress {
                     stage: format!("Crossfading clip {}/{}", i, n - 1),
-                    percent: 40.0,
+                    percent: step_start,
                     elapsed_secs: 0.0,
                     estimated_remaining_secs: 0.0,
                     current_file: String::new(),
@@ -503,15 +513,13 @@ impl Renderer {
                 let current_dur = self.clip_dur(&current)?;
                 let next = clips[i].clone();
 
-                let combined = self.xfade_two(&current, &next, current_dur, fdur, settings, progress_cb)?;
+                let combined = self.xfade_two(&current, &next, current_dur, fdur, settings, &mapped_cb)?;
 
                 if i < n - 1 {
-                    // Rename intermediate aside so next xfade_two can write fresh
                     let step_path = work.join(format!("concat_step_{}.mp4", i));
                     std::fs::rename(&combined, &step_path)?;
                     current = step_path.to_string_lossy().to_string();
                 } else {
-                    // Last pair: rename straight to final output
                     std::fs::rename(&combined, output)?;
                 }
             }
@@ -631,50 +639,58 @@ impl Renderer {
         let mut current = segment.to_string();
         let mut current_dur = seg_dur;
         let mut has_output = false;
+        let total_steps = (num - 1) as f64;
 
         for i in 1..num {
             self.check_cancel()?;
 
+            let step_start = 50.0 + 30.0 * (i as f64 - 1.0) / total_steps;
+            let step_end = 50.0 + 30.0 * i as f64 / total_steps;
+
             if current_dur >= target - 0.01 {
-                // Already at target without needing more loops
                 if !has_output {
-                    // No xfade done: stream-copy segment directly to output
+                    let mapped_cb = move |p: RenderProgress| {
+                        let mapped = step_start + (step_end - step_start) * p.percent / 100.0;
+                        progress_cb(RenderProgress { percent: mapped, ..p })
+                    };
                     let mut cmd = Command::new(&self.ffmpeg_path);
                     cmd.arg("-y").arg("-i").arg(segment)
                         .arg("-t").arg(&target.to_string())
                         .arg("-c").arg("copy")
                         .arg("-progress").arg("pipe:1").arg(output);
-                    return self.progress_run(cmd, target, "Looping segment", progress_cb);
+                    return self.progress_run(cmd, target, "Looping segment", &mapped_cb);
                 }
                 break;
             }
 
+            let mapped_cb = |p: RenderProgress| {
+                let mapped = step_start + (step_end - step_start) * p.percent / 100.0;
+                progress_cb(RenderProgress { percent: mapped, ..p })
+            };
+
             progress_cb(RenderProgress {
                 stage: format!("Looping with crossfade ({}/{})", i, num - 1),
-                percent: 50.0,
+                percent: step_start,
                 elapsed_secs: 0.0,
                 estimated_remaining_secs: 0.0,
                 current_file: format!("{} loops", num),
                 log_lines: vec![],
             });
 
-            let combined = self.xfade_two(&current, segment, current_dur, fdur, settings, progress_cb)?;
+            let combined = self.xfade_two(&current, segment, current_dur, fdur, settings, &mapped_cb)?;
             current_dur = current_dur + seg_dur - fdur;
 
             if i == num - 1 || current_dur >= target - 0.01 {
-                // Last iteration or target reached: final result to output
                 std::fs::rename(&combined, output)?;
                 has_output = true;
                 break;
             }
 
-            // Save intermediate for next iteration
             let step = work.join(format!("loop_step_{}.mp4", i));
             std::fs::rename(&combined, &step)?;
             current = step.to_string_lossy().to_string();
         }
 
-        // Truncate to exact target if output overshoots
         if has_output {
             let actual = self.clip_dur(output).unwrap_or(current_dur);
             if actual > target + 0.1 {
