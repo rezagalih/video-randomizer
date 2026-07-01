@@ -85,7 +85,24 @@ export default function QueuePanel({
                     opacity: item.status === "completed" || item.status === "cancelled" ? 0.6 : 1,
                   }}>
                     <td>{i + 1}</td>
-                    <td style={{ wordBreak: "break-all", fontSize: 13 }}>{item.name}</td>
+                    <td style={{ wordBreak: "break-all", fontSize: 13 }}>
+                      {item.name}
+                      <span style={{
+                        display: "inline-block",
+                        fontSize: 10,
+                        padding: "1px 6px",
+                        borderRadius: 4,
+                        marginLeft: 6,
+                        background: item.settings.audio_normalization.type === "off" ? "var(--surface2)" : "var(--primary-bg)",
+                        color: item.settings.audio_normalization.type === "off" ? "var(--text2)" : "var(--primary)",
+                        verticalAlign: "middle",
+                      }}>
+                        {item.settings.audio_normalization.type === "off" && "🔇 Off"}
+                        {item.settings.audio_normalization.type === "lufs14" && "🔊 -14 LUFS"}
+                        {item.settings.audio_normalization.type === "lufs23" && "🔊 -23 LUFS"}
+                        {item.settings.audio_normalization.type === "custom" && `🔊 ${item.settings.audio_normalization.value} LUFS`}
+                      </span>
+                    </td>
                     <td>
                       <span style={{
                         color: item.status === "completed" ? "var(--success)" :

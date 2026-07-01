@@ -1,4 +1,4 @@
-import { RenderSettings } from "../types";
+import { AudioNormalization, RenderSettings } from "../types";
 
 interface Props {
   settings: RenderSettings;
@@ -58,6 +58,39 @@ export default function EncodingSettings({ settings, onChange }: Props) {
           />
           Mute source video sound
         </label>
+      </div>
+      <div className="form-group">
+        <label>Audio Normalization (LUFS)</label>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <select
+            value={settings.audio_normalization.type}
+            onChange={(e) => {
+              const t = e.target.value as AudioNormalization["type"];
+              switch (t) {
+                case "off": update({ audio_normalization: { type: "off" } }); break;
+                case "lufs14": update({ audio_normalization: { type: "lufs14" } }); break;
+                case "lufs23": update({ audio_normalization: { type: "lufs23" } }); break;
+                case "custom": update({ audio_normalization: { type: "custom", value: -14 } }); break;
+              }
+            }}
+          >
+            <option value="off">Off</option>
+            <option value="lufs14">-14 LUFS (YouTube)</option>
+            <option value="lufs23">-23 LUFS (Broadcast)</option>
+            <option value="custom">Custom</option>
+          </select>
+          {settings.audio_normalization.type === "custom" && (
+            <input
+              type="number"
+              min={-40}
+              max={0}
+              step={0.1}
+              value={settings.audio_normalization.value}
+              onChange={(e) => update({ audio_normalization: { type: "custom", value: parseFloat(e.target.value) || -14 } })}
+              style={{ width: 80 }}
+            />
+          )}
+        </div>
       </div>
       <div className="grid-2">
         <div className="form-group">
@@ -119,6 +152,30 @@ export default function EncodingSettings({ settings, onChange }: Props) {
           ))}
         </div>
       </div>
+      <div className="form-group">
+        <label>Music Volume: {Math.round(settings.music_volume * 100)}%</label>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={Math.round(settings.music_volume * 100)}
+          onChange={(e) => update({ music_volume: Number(e.target.value) / 100 })}
+          style={{ width: "100%" }}
+        />
+      </div>
+      {settings.ambient_enabled && (
+        <div className="form-group">
+          <label>Ambient Volume: {Math.round(settings.ambient_volume * 100)}%</label>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={Math.round(settings.ambient_volume * 100)}
+            onChange={(e) => update({ ambient_volume: Number(e.target.value) / 100 })}
+            style={{ width: "100%" }}
+          />
+        </div>
+      )}
     </div>
   );
 }

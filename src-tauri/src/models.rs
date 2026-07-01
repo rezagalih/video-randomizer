@@ -97,6 +97,15 @@ pub struct WatermarkSettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "value", rename_all = "snake_case")]
+pub enum AudioNormalization {
+    Off,
+    Lufs14,
+    Lufs23,
+    Custom(f64),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RenderSettings {
     pub video_playback_mode: PlaybackMode,
     pub music_playback_mode: MusicPlaybackMode,
@@ -118,6 +127,11 @@ pub struct RenderSettings {
     pub cut_random_enabled: bool,
     pub cut_random_min: f64,
     pub cut_random_max: f64,
+    pub audio_normalization: AudioNormalization,
+    pub ambient_enabled: bool,
+    pub ambient_path: String,
+    pub music_volume: f64,
+    pub ambient_volume: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

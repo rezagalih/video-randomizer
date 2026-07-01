@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { VideoFile, MusicFile, ScanResult } from "../types";
+import { AudioNormalization, VideoFile, MusicFile, ScanResult } from "../types";
 
 interface Props {
   open: boolean;
@@ -11,6 +11,11 @@ interface Props {
     musicOrder: number[];
     durationMode: "fixed" | "fixed_complete_last_song" | "selected_songs";
     fixedDurationMinutes: number;
+    audioNormalization: AudioNormalization;
+    ambientPath: string;
+    ambientDuration: number;
+    musicVolume: number;
+    ambientVolume: number;
   }) => Promise<void>;
 }
 
@@ -32,6 +37,11 @@ export default function WizardModal({ open, onClose, onAddJob }: Props) {
   const [musicOrder, setMusicOrder] = useState<number[]>([]);
   const [durationMode, setDurationMode] = useState<"fixed" | "fixed_complete_last_song" | "selected_songs">("fixed");
   const [fixedDurationMinutes, setFixedDurationMinutes] = useState(30);
+  const [audioNormalization, setAudioNormalization] = useState<AudioNormalization>({ type: "off" });
+  const [ambientPath, setAmbientPath] = useState("");
+  const [ambientDuration, setAmbientDuration] = useState(0);
+  const [musicVolume, setMusicVolume] = useState(0.8);
+  const [ambientVolume, setAmbientVolume] = useState(0.3);
 
   if (!open) return null;
 
@@ -43,6 +53,11 @@ export default function WizardModal({ open, onClose, onAddJob }: Props) {
     setMusicOrder([]);
     setDurationMode("fixed");
     setFixedDurationMinutes(30);
+    setAudioNormalization({ type: "off" });
+    setAmbientPath("");
+    setAmbientDuration(0);
+    setMusicVolume(0.8);
+    setAmbientVolume(0.3);
     setAdding(false);
   }
 
@@ -164,6 +179,28 @@ export default function WizardModal({ open, onClose, onAddJob }: Props) {
     setMusicOrder([]);
   }
 
+  async function pickAmbient() {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const file = await open({
+      multiple: false,
+      filters: [{ name: "Audio", extensions: ["mp3", "wav", "flac", "aac", "m4a", "ogg"] }],
+    });
+    if (!file) return;
+    const path = file as string;
+    const { invoke } = await import("@tauri-apps/api/core");
+    try {
+      const meta = await invoke<{ duration: number }>("get_music_metadata", { path });
+      if (meta.duration > 0) {
+        setAmbientPath(path);
+        setAmbientDuration(meta.duration);
+      } else {
+        alert("File audio tidak valid atau durasi 0.");
+      }
+    } catch {
+      alert("Gagal membaca metadata file audio.");
+    }
+  }
+
   function shuffleMusic() {
     setMusicOrder(prev => {
       const arr = [...prev];
@@ -180,7 +217,7 @@ export default function WizardModal({ open, onClose, onAddJob }: Props) {
     if (music.length === 0) { alert("Select at least one music file."); return; }
     setAdding(true);
     try {
-      await onAddJob({ intro, videos, music, musicOrder, durationMode, fixedDurationMinutes });
+      await onAddJob({ intro, videos, music, musicOrder, durationMode, fixedDurationMinutes, audioNormalization, ambientPath, ambientDuration, musicVolume, ambientVolume });
       reset();
       onClose();
     } catch (e) {
@@ -378,6 +415,92 @@ export default function WizardModal({ open, onClose, onAddJob }: Props) {
                 Total music duration: {formatDur(music.reduce((s, m) => s + m.duration, 0))}
               </p>
             )}
+            <hr style={{ margin: "16px 0", border: "none", borderTop: "1px solid var(--border)" }} />
+            <div className="form-group">
+              <label>Audio Normalization (LUFS)</label>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <select
+                  value={audioNormalization.type}
+                  onChange={(e) => {
+                    const t = e.target.value as AudioNormalization["type"];
+                    switch (t) {
+                      case "off": setAudioNormalization({ type: "off" }); break;
+                      case "lufs14": setAudioNormalization({ type: "lufs14" }); break;
+                      case "lufs23": setAudioNormalization({ type: "lufs23" }); break;
+                      case "custom": setAudioNormalization({ type: "custom", value: -14 }); break;
+                    }
+                  }}
+                >
+                  <option value="off">Off</option>
+                  <option value="lufs14">-14 LUFS (YouTube)</option>
+                  <option value="lufs23">-23 LUFS (Broadcast)</option>
+                  <option value="custom">Custom</option>
+                </select>
+                {audioNormalization.type === "custom" && (
+                  <input
+                    type="number"
+                    min={-40}
+                    max={0}
+                    step={0.1}
+                    value={audioNormalization.value}
+                    onChange={(e) => setAudioNormalization({ type: "custom", value: parseFloat(e.target.value) || -14 })}
+                    style={{ width: 80 }}
+                  />
+                )}
+              </div>
+            </div>
+            <hr style={{ margin: "16px 0", border: "none", borderTop: "1px solid var(--border)" }} />
+            <div className="form-group">
+              <label>🌧️ Ambient Sound</label>
+              <p style={{ fontSize: 13, color: "var(--text2)", marginBottom: 8 }}>
+                Optional: background sound (rain, river, white noise, etc.)
+              </p>
+              <div className="btn-group">
+                {!ambientPath ? (
+                  <button onClick={pickAmbient}>Select Ambient File</button>
+                ) : (
+                  <>
+                    <button onClick={pickAmbient}>Change</button>
+                    <button className="danger" onClick={() => { setAmbientPath(""); setAmbientDuration(0); }}>Remove</button>
+                  </>
+                )}
+              </div>
+              {ambientPath ? (
+                <div style={{ marginTop: 8, padding: 12, background: "var(--surface2)", borderRadius: 6 }}>
+                  <div style={{ fontWeight: 600 }}>{ambientPath.split("/").pop() || ambientPath.split("\\").pop()}</div>
+                  <div style={{ fontSize: 13, color: "var(--text2)" }}>{formatDur(ambientDuration)}</div>
+                </div>
+              ) : (
+                <div className="empty-state" style={{ padding: 16, marginTop: 8 }}>
+                  No ambient file selected.
+                </div>
+              )}
+            </div>
+            <hr style={{ margin: "16px 0", border: "none", borderTop: "1px solid var(--border)" }} />
+            <div className="form-group">
+              <label>Music Volume: {Math.round(musicVolume * 100)}%</label>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={Math.round(musicVolume * 100)}
+                onChange={(e) => setMusicVolume(Number(e.target.value) / 100)}
+                style={{ width: "100%" }}
+              />
+            </div>
+            {ambientPath && (
+              <div className="form-group">
+                <label>Ambient Volume: {Math.round(ambientVolume * 100)}%</label>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={Math.round(ambientVolume * 100)}
+                  onChange={(e) => setAmbientVolume(Number(e.target.value) / 100)}
+                  style={{ width: "100%" }}
+                />
+              </div>
+            )}
           </div>
         );
 
@@ -403,6 +526,21 @@ export default function WizardModal({ open, onClose, onAddJob }: Props) {
                 {durationMode === "fixed_complete_last_song" && `Fixed + Complete Last Song (${fixedDurationMinutes} min)`}
                 {durationMode === "selected_songs" && "Selected Songs Duration"}
               </div>
+              <div className="card" style={{ padding: 12 }}>
+                <strong>Audio Normalization:</strong>{" "}
+                {audioNormalization.type === "off" && "Off"}
+                {audioNormalization.type === "lufs14" && "-14 LUFS (YouTube)"}
+                {audioNormalization.type === "lufs23" && "-23 LUFS (Broadcast)"}
+                {audioNormalization.type === "custom" && `${audioNormalization.value} LUFS`}
+              </div>
+              <div className="card" style={{ padding: 12 }}>
+                <strong>Ambient Sound:</strong>{" "}
+                {ambientPath ? (ambientPath.split("/").pop() || ambientPath.split("\\").pop()) : "None"}
+              </div>
+              <div className="card" style={{ padding: 12 }}>
+                <strong>Music Volume:</strong> {Math.round(musicVolume * 100)}%
+                {ambientPath && <> &middot; <strong>Ambient Volume:</strong> {Math.round(ambientVolume * 100)}%</>}
+              </div>
             </div>
           </div>
         );
@@ -410,8 +548,8 @@ export default function WizardModal({ open, onClose, onAddJob }: Props) {
   }
 
   return (
-    <div className="modal-overlay" onClick={handleClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay" style={{ zIndex: 9999 }}>
+      <div className="modal">
         <div className="modal-header">
           <h2>✨ Wizard Mode</h2>
           <button className="modal-close" onClick={handleClose}>✕</button>

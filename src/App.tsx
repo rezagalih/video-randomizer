@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { VideoFile, MusicFile, SequenceItem, RenderSettings, RenderProgress, QueueItem, QueueStatus } from "./types";
+import { AudioNormalization, VideoFile, MusicFile, SequenceItem, RenderSettings, RenderProgress, QueueItem, QueueStatus } from "./types";
 import VideoImport from "./components/VideoImport";
 import MusicImport from "./components/MusicImport";
 import PlaybackStrategy from "./components/PlaybackStrategy";
 import DurationSettings from "./components/DurationSettings";
 import EncodingSettings from "./components/EncodingSettings";
+import AmbientImport from "./components/AmbientImport";
 import TransitionSettings from "./components/TransitionSettings";
 import OutputSettings from "./components/OutputSettings";
 import WatermarkSettings from "./components/WatermarkSettings";
@@ -56,6 +57,11 @@ function defaultSettings(): RenderSettings {
     cut_random_enabled: false,
     cut_random_min: 3,
     cut_random_max: 5,
+    audio_normalization: { type: "off" },
+    ambient_enabled: false,
+    ambient_path: "",
+    music_volume: 0.8,
+    ambient_volume: 0.3,
   };
 }
 
@@ -87,6 +93,8 @@ interface PersistedState {
   introVideo?: VideoFile | null;
   videoFolders?: string[];
   musicFolders?: string[];
+  ambientPath?: string;
+  ambientDuration?: number;
 }
 
 export default function App() {
@@ -108,6 +116,8 @@ export default function App() {
   const [isQueueRunning, setIsQueueRunning] = useState(false);
   const [autoRegenerate, setAutoRegenerate] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [ambientPath, setAmbientPath] = useState("");
+  const [ambientDuration, setAmbientDuration] = useState(0);
   const queueCancelledRef = useRef(false);
   const statePath = useRef<string>("");
   const loaded = useRef(false);
@@ -127,6 +137,8 @@ export default function App() {
         if (data.introVideo) setIntroVideo(data.introVideo);
         if (data.videoFolders) setVideoFolders(data.videoFolders);
         if (data.musicFolders) setMusicFolders(data.musicFolders);
+        if (data.ambientPath) setAmbientPath(data.ambientPath);
+        if (data.ambientDuration) setAmbientDuration(data.ambientDuration);
       } catch {
         // no saved state, use defaults
       }
@@ -134,10 +146,10 @@ export default function App() {
     })();
   }, []);
 
-  const save = useCallback(async (v: VideoFile[], m: MusicFile[], seq: SequenceItem[], s: RenderSettings, mo: number[], iv: VideoFile | null, vf: string[], mf: string[]) => {
+  const save = useCallback(async (v: VideoFile[], m: MusicFile[], seq: SequenceItem[], s: RenderSettings, mo: number[], iv: VideoFile | null, vf: string[], mf: string[], ap: string, ad: number) => {
     if (!statePath.current) return;
     const { invoke } = await import("@tauri-apps/api/core");
-    const data: PersistedState = { videos: v, music: m, sequence: seq, settings: s, musicOrder: mo, introVideo: iv, videoFolders: vf, musicFolders: mf };
+    const data: PersistedState = { videos: v, music: m, sequence: seq, settings: s, musicOrder: mo, introVideo: iv, videoFolders: vf, musicFolders: mf, ambientPath: ap, ambientDuration: ad };
     try {
       await invoke("save_state", { path: statePath.current, data });
     } catch { /* ignore save errors */ }
@@ -145,7 +157,7 @@ export default function App() {
 
   useEffect(() => {
     if (!loaded.current) return;
-    save(videos, music, sequence, settings, musicOrder, introVideo, videoFolders, musicFolders);
+    save(videos, music, sequence, settings, musicOrder, introVideo, videoFolders, musicFolders, ambientPath, ambientDuration);
   }, [videos, music, sequence, settings, musicOrder, introVideo, videoFolders, musicFolders]);
 
   // auto-generate when entering render tab
@@ -357,6 +369,11 @@ export default function App() {
     musicOrder: number[];
     durationMode: "fixed" | "fixed_complete_last_song" | "selected_songs";
     fixedDurationMinutes: number;
+    audioNormalization: AudioNormalization;
+    ambientPath: string;
+    ambientDuration: number;
+    musicVolume: number;
+    ambientVolume: number;
   }) {
     const { invoke } = await import("@tauri-apps/api/core");
 
@@ -393,6 +410,11 @@ export default function App() {
       duration_mode: durationMode,
       output_filename: filename,
       output_folder: settings.output_folder,
+      audio_normalization: data.audioNormalization,
+      ambient_enabled: data.ambientPath ? true : false,
+      ambient_path: data.ambientPath,
+      music_volume: data.musicVolume,
+      ambient_volume: data.ambientVolume,
     };
 
     function loopPlaylist(baseOrder: number[], music: MusicFile[], targetDuration: number): number[] {
@@ -597,6 +619,26 @@ export default function App() {
               />
               <CutRandomSettings settings={settings} onChange={setSettings} />
               <DurationSettings settings={settings} onChange={setSettings} />
+              <AmbientImport
+                ambientPath={ambientPath}
+                ambientDuration={ambientDuration}
+                onSelect={(path) => {
+                  setAmbientPath(path);
+                  (async () => {
+                    const { invoke } = await import("@tauri-apps/api/core");
+                    try {
+                      const meta = await invoke<{ duration: number }>("get_music_metadata", { path });
+                      setAmbientDuration(meta.duration);
+                      setSettings(prev => ({ ...prev, ambient_enabled: true, ambient_path: path }));
+                    } catch {}
+                  })();
+                }}
+                onRemove={() => {
+                  setAmbientPath("");
+                  setAmbientDuration(0);
+                  setSettings(prev => ({ ...prev, ambient_enabled: false, ambient_path: "" }));
+                }}
+              />
               <EncodingSettings settings={settings} onChange={setSettings} />
               <TransitionSettings settings={settings} onChange={setSettings} />
               <WatermarkSettings settings={settings} onChange={setSettings} videos={videos} />

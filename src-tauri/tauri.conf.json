@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicehash/deps/refs/heads/main/tauri-conf-v2/tauri.conf.json",
   "productName": "Video Randomizer Looper",
-  "version": "1.0.0",
+  "version": "1.4.0",
   "identifier": "com.videorandomizer.app",
   "build": {
     "beforeDevCommand": "npm run dev",

@@ -367,6 +367,87 @@ Supported playback modes:
 
 ---
 
+# Ambient Sound (Ambience)
+
+Ambient sound adalah file audio terpisah (rain, river, white noise, wind, dll)
+yang diputar terus menerus sepanjang durasi video — independent dari musik.
+
+## Tujuan
+
+- Suara latar konsisten tanpa jeda (tidak seperti audio asli video yang terpotong-potong)
+- Cocok untuk konten relaksasi / nature / meditation
+- Level suara bisa diatur terpisah dari musik
+
+## Implementasi
+
+### 1. Import Ambient
+
+Section baru mirip "Intro Import" tapi untuk file audio ambient.
+- Daftar format: MP3, WAV, FLAC, AAC, M4A, OGG
+- Single file import
+- Tidak perlu multiple — satu file ambient saja
+
+### 2. Looping (Pendekatan A — Concat Playlist)
+
+```rust
+fn build_ambient_playlist(&self, path: &str, target_dur: f64) -> Result<String> {
+    let work = std::env::temp_dir().join("video_randomizer");
+    let list = work.join("ambient_playlist.txt");
+    let ambient_dur = self.audio_dur(path)?;
+    let num_loops = (target_dur / ambient_dur).ceil() as u64;
+
+    let mut content = String::new();
+    for _ in 0..num_loops {
+        content.push_str(&format!("file '{}'\n", path));
+    }
+    std::fs::write(&list, &content)?;
+
+    Ok(list.to_string_lossy().to_string())
+}
+```
+
+Sama seperti pola yang sudah ada di `build_music_playlist`.
+
+### 3. Final Mux — 3 Input
+
+```rust
+// Inputs: 0 = video, 1 = music playlist, 2 = ambient playlist
+cmd.args(["-map", "0:v:0", "-map", "1:a:0", "-map", "2:a:0"]);
+cmd.arg("-filter_complex").arg(
+    "[1:a]volume=0.7[music];[2:a]volume=0.3[ambient];[music][ambient]amix=inputs=2:duration=first[out]"
+);
+cmd.args(["-map", "[out]"]);
+cmd.arg("-c:a").arg("aac").arg("-b:a").arg("192k");
+```
+
+### 4. Kontrol Volume
+
+Dua slider di Encoding Settings:
+- **Music Volume** (0–100%, default 80)
+- **Ambient Volume** (0–100%, default 30 — lebih pelan agar tidak dominan)
+
+### 5. Field Baru di RenderSettings
+
+```rust
+pub struct RenderSettings {
+    // ... existing fields ...
+    pub ambient_enabled: bool,
+    pub ambient_path: String,
+    pub music_volume: f64,     // 0.0 - 1.0
+    pub ambient_volume: f64,   // 0.0 - 1.0
+}
+```
+
+### 6. UI Yang Diubah
+
+- **`AmbientImport.tsx`** — component baru untuk import file ambient
+- **`EncodingSettings.tsx`** — tambah dua slider volume
+- **`App.tsx`** — default value + state
+
+Tidak mempengaruhi render flow yang sudah ada — ambient hanya menambah input ke filter complex di `mux_video_audio()`.
+
+---
+
 # Duration Modes
 
 ## Fixed Duration

@@ -31,6 +31,12 @@ export interface WatermarkSettings {
   scale: number;
 }
 
+export type AudioNormalization =
+  | { type: "off" }
+  | { type: "lufs14" }
+  | { type: "lufs23" }
+  | { type: "custom"; value: number };
+
 export interface RenderSettings {
   video_playback_mode: "shuffle" | "sequential";
   music_playback_mode: "shuffle" | "sequential" | "repeat_single";
@@ -52,6 +58,11 @@ export interface RenderSettings {
   cut_random_enabled: boolean;
   cut_random_min: number;
   cut_random_max: number;
+  audio_normalization: AudioNormalization;
+  ambient_enabled: boolean;
+  ambient_path: string;
+  music_volume: number;
+  ambient_volume: number;
 }
 
 export interface RenderProgress {

@@ -93,6 +93,13 @@ impl Renderer {
             current_file: String::new(), log_lines: vec![],
         });
 
+        let ambient_list = if settings.ambient_enabled && !settings.ambient_path.is_empty() {
+            let ambient = self.build_ambient_playlist(&settings.ambient_path, music_dur)?;
+            Some(ambient)
+        } else {
+            None
+        };
+
         // Separate intro from main clips
         let intro_item: Option<&SequenceItem> = sequence.iter().find(|s| s.is_intro);
         let main_sequence: Vec<SequenceItem> = sequence.iter().filter(|s| !s.is_intro).cloned().collect();
@@ -139,7 +146,7 @@ impl Renderer {
                 stage: "Muxing video & audio → finalizing".into(), percent: 80.0, elapsed_secs: 0.0,
                 estimated_remaining_secs: 0.0, current_file: String::new(), log_lines: vec![],
             });
-            let final_path = self.mux_video_audio(&looped, &music_path, music_dur, settings, &elapsed_progress_cb)?;
+            let final_path = self.mux_video_audio(&looped, &music_path, music_dur, settings, ambient_list.as_deref(), &elapsed_progress_cb)?;
 
             if settings.delete_cache {
                 let _ = std::fs::remove_dir_all(&std::env::temp_dir().join("video_randomizer"));
@@ -216,7 +223,7 @@ impl Renderer {
             stage: "Muxing video & audio → finalizing".into(), percent: 80.0, elapsed_secs: 0.0,
             estimated_remaining_secs: 0.0, current_file: String::new(), log_lines: vec![],
         });
-        let final_path = self.mux_video_audio(&final_video, &music_path, music_dur, settings, &elapsed_progress_cb)?;
+        let final_path = self.mux_video_audio(&final_video, &music_path, music_dur, settings, ambient_list.as_deref(), &elapsed_progress_cb)?;
 
         if settings.delete_cache {
             let _ = std::fs::remove_dir_all(&std::env::temp_dir().join("video_randomizer"));
@@ -386,6 +393,9 @@ impl Renderer {
             self.progress_run(cmd, 0.0, "Stitching crossfade into segment", progress_cb)?;
         }
 
+        let _ = std::fs::remove_file(&tail_s);
+        let _ = std::fs::remove_file(&head_s);
+        let _ = std::fs::remove_file(&xfade_clip_s);
         Ok(out_s)
     }
 
@@ -444,6 +454,35 @@ impl Renderer {
         };
 
         Ok((list_str, actual_dur))
+    }
+
+    fn build_ambient_playlist(&self, ambient_path: &str, target_dur: f64) -> Result<String> {
+        let work = std::env::temp_dir().join("video_randomizer");
+        std::fs::create_dir_all(&work)?;
+        let list = work.join("ambient_playlist.txt");
+        let list_s = list.to_string_lossy().to_string();
+
+        let ambient_dur = self.audio_dur(ambient_path)?;
+        if ambient_dur <= 0.0 {
+            anyhow::bail!("Ambient file has zero duration");
+        }
+        let num_loops = (target_dur / ambient_dur).ceil() as u64;
+
+        let mut content = String::new();
+        for _ in 0..num_loops {
+            content.push_str(&format!("file '{}'\n", ambient_path));
+        }
+        std::fs::write(&list_s, &content)?;
+
+        Ok(list_s)
+    }
+
+    fn audio_dur(&self, path: &str) -> Result<f64> {
+        let out = Command::new(&self.ffprobe_path)
+            .args(["-v", "quiet", "-print_format", "json", "-show_format", path])
+            .output()?;
+        let j: serde_json::Value = serde_json::from_slice(&out.stdout)?;
+        Ok(j["format"]["duration"].as_str().and_then(|d| d.parse().ok()).unwrap_or(0.0))
     }
 
     fn build_master_segment(
@@ -518,9 +557,15 @@ impl Renderer {
                 if i < n - 1 {
                     let step_path = work.join(format!("concat_step_{}.mp4", i));
                     std::fs::rename(&combined, &step_path)?;
+                    if i > 1 {
+                        let _ = std::fs::remove_file(work.join(format!("concat_step_{}.mp4", i - 1)));
+                    }
                     current = step_path.to_string_lossy().to_string();
                 } else {
                     std::fs::rename(&combined, output)?;
+                    if i > 1 {
+                        let _ = std::fs::remove_file(work.join(format!("concat_step_{}.mp4", i - 1)));
+                    }
                 }
             }
         } else {
@@ -600,6 +645,60 @@ impl Renderer {
         Ok(out)
     }
 
+    fn build_loop_xfade_clip(&self, segment: &str, seg_dur: f64, fdur: f64, settings: &RenderSettings) -> Result<String> {
+        let work = std::env::temp_dir().join("video_randomizer");
+        std::fs::create_dir_all(&work)?;
+
+        let tail = work.join("xfade_tail.mp4");
+        let head = work.join("xfade_head.mp4");
+        let xfade_clip = work.join("xfade_clip.mp4");
+        let cut_start = (seg_dur - fdur).max(0.0);
+
+        {
+            let mut cmd = Command::new(&self.ffmpeg_path);
+            cmd.arg("-y").arg("-ss").arg(&cut_start.to_string())
+                .arg("-i").arg(segment)
+                .arg("-t").arg(&fdur.to_string())
+                .arg("-c").arg("copy")
+                .arg(tail.to_string_lossy().to_string());
+            let child = cmd.stdout(Stdio::null()).stderr(Stdio::null()).spawn()
+                .context("Failed to spawn ffmpeg for xfade tail")?;
+            let _ = child.wait_with_output()?;
+        }
+
+        {
+            let mut cmd = Command::new(&self.ffmpeg_path);
+            cmd.arg("-y").arg("-ss").arg("0")
+                .arg("-i").arg(segment)
+                .arg("-t").arg(&fdur.to_string())
+                .arg("-c").arg("copy")
+                .arg(head.to_string_lossy().to_string());
+            let child = cmd.stdout(Stdio::null()).stderr(Stdio::null()).spawn()
+                .context("Failed to spawn ffmpeg for xfade head")?;
+            let _ = child.wait_with_output()?;
+        }
+
+        let tail_s = tail.to_string_lossy().to_string();
+        let head_s = head.to_string_lossy().to_string();
+        let xfade_s = xfade_clip.to_string_lossy().to_string();
+        {
+            let mut cmd = Command::new(&self.ffmpeg_path);
+            cmd.arg("-y").arg("-i").arg(&tail_s).arg("-i").arg(&head_s);
+            let filter = format!("xfade=transition=fade:duration={}:offset=0[vout]", fdur);
+            cmd.arg("-filter_complex").arg(&filter).arg("-map").arg("[vout]");
+            self.enc_opts(&mut cmd, settings);
+            cmd.arg("-progress").arg("pipe:1").arg(&xfade_s);
+            let child = cmd.stdout(Stdio::null()).stderr(Stdio::null()).spawn()
+                .context("Failed to spawn ffmpeg for xfade clip")?;
+            let _ = child.wait_with_output()?;
+        }
+
+        let _ = std::fs::remove_file(&tail_s);
+        let _ = std::fs::remove_file(&head_s);
+
+        Ok(xfade_s)
+    }
+
     fn loop_with_xfade(
         &self,
         segment: &str,
@@ -611,100 +710,65 @@ impl Renderer {
         progress_cb: &impl Fn(RenderProgress),
         output: &str,
     ) -> Result<()> {
-        // For very large loop counts, fall back to concat demuxer (no crossfade)
-        if num > 1000 {
-            let list = std::env::temp_dir().join("video_randomizer").join("loop_fallback.txt");
-            let mut content = String::new();
-            for _ in 0..num {
-                content.push_str(&format!("file '{}'\n", segment));
-            }
-            std::fs::write(&list, &content)?;
-
+        if num <= 1 {
             let mut cmd = Command::new(&self.ffmpeg_path);
-            cmd.arg("-y")
-                .arg("-f").arg("concat")
-                .arg("-safe").arg("0")
-                .arg("-i").arg(&list)
+            cmd.arg("-y").arg("-i").arg(segment)
                 .arg("-t").arg(&target.to_string())
                 .arg("-c").arg("copy")
                 .arg("-progress").arg("pipe:1").arg(output);
-            return self.progress_run(cmd, target, "Looping (fallback)", progress_cb);
+            return self.progress_run(cmd, target, "Looping segment", progress_cb);
         }
 
-        // Optimized: iterative xfade_two — only ~fdur seconds re-encoded per
-        // iteration, the rest is stream-copied via concat demuxer.
+        progress_cb(RenderProgress {
+            stage: format!("Building xfade clip for {} loops", num),
+            percent: 50.0,
+            elapsed_secs: 0.0,
+            estimated_remaining_secs: 0.0,
+            current_file: format!("{} loops", num),
+            log_lines: vec![],
+        });
+
         let work = std::env::temp_dir().join("video_randomizer");
         std::fs::create_dir_all(&work)?;
 
-        let mut current = segment.to_string();
-        let mut current_dur = seg_dur;
-        let mut has_output = false;
-        let total_steps = (num - 1) as f64;
+        let xfade_clip = self.build_loop_xfade_clip(segment, seg_dur, fdur, settings)?;
 
-        for i in 1..num {
-            self.check_cancel()?;
+        let list = work.join("loop_xfade_playlist.txt");
+        let mut content = String::new();
 
-            let step_start = 50.0 + 30.0 * (i as f64 - 1.0) / total_steps;
-            let step_end = 50.0 + 30.0 * i as f64 / total_steps;
+        // First segment: full minus last fdur
+        content.push_str(&format!("file '{}'\noutpoint {}\n", segment, seg_dur - fdur));
+        content.push_str(&format!("file '{}'\n", xfade_clip));
 
-            if current_dur >= target - 0.01 {
-                if !has_output {
-                    let mapped_cb = move |p: RenderProgress| {
-                        let mapped = step_start + (step_end - step_start) * p.percent / 100.0;
-                        progress_cb(RenderProgress { percent: mapped, ..p })
-                    };
-                    let mut cmd = Command::new(&self.ffmpeg_path);
-                    cmd.arg("-y").arg("-i").arg(segment)
-                        .arg("-t").arg(&target.to_string())
-                        .arg("-c").arg("copy")
-                        .arg("-progress").arg("pipe:1").arg(output);
-                    return self.progress_run(cmd, target, "Looping segment", &mapped_cb);
-                }
-                break;
-            }
-
-            let mapped_cb = |p: RenderProgress| {
-                let mapped = step_start + (step_end - step_start) * p.percent / 100.0;
-                progress_cb(RenderProgress { percent: mapped, ..p })
-            };
-
-            progress_cb(RenderProgress {
-                stage: format!("Looping with crossfade ({}/{})", i, num - 1),
-                percent: step_start,
-                elapsed_secs: 0.0,
-                estimated_remaining_secs: 0.0,
-                current_file: format!("{} loops", num),
-                log_lines: vec![],
-            });
-
-            let combined = self.xfade_two(&current, segment, current_dur, fdur, settings, &mapped_cb)?;
-            current_dur = current_dur + seg_dur - fdur;
-
-            if i == num - 1 || current_dur >= target - 0.01 {
-                std::fs::rename(&combined, output)?;
-                has_output = true;
-                break;
-            }
-
-            let step = work.join(format!("loop_step_{}.mp4", i));
-            std::fs::rename(&combined, &step)?;
-            current = step.to_string_lossy().to_string();
+        // Middle segments: dari fdur sampai seg_dur - fdur
+        for _ in 0..(num - 2) {
+            content.push_str(&format!("file '{}'\ninpoint {}\noutpoint {}\n", segment, fdur, seg_dur - fdur));
+            content.push_str(&format!("file '{}'\n", xfade_clip));
         }
 
-        if has_output {
-            let actual = self.clip_dur(output).unwrap_or(current_dur);
-            if actual > target + 0.1 {
-                let trimmed = work.join("loop_trimmed.mp4");
-                let trimmed_s = trimmed.to_string_lossy().to_string();
-                let mut cmd = Command::new(&self.ffmpeg_path);
-                cmd.arg("-y").arg("-i").arg(output)
-                    .arg("-t").arg(&target.to_string())
-                    .arg("-c").arg("copy")
-                    .arg("-progress").arg("pipe:1").arg(&trimmed_s);
-                self.progress_run(cmd, target, "Trimming loop to target", progress_cb)?;
-                std::fs::rename(&trimmed_s, output)?;
-            }
-        }
+        // Last segment: dari fdur sampai akhir
+        content.push_str(&format!("file '{}'\ninpoint {}\n", segment, fdur));
+
+        std::fs::write(&list, &content)?;
+
+        progress_cb(RenderProgress {
+            stage: format!("Looping with crossfade ({}x)", num),
+            percent: 55.0,
+            elapsed_secs: 0.0,
+            estimated_remaining_secs: 0.0,
+            current_file: format!("{} loops", num),
+            log_lines: vec![],
+        });
+
+        let mut cmd = Command::new(&self.ffmpeg_path);
+        cmd.arg("-y").arg("-f").arg("concat").arg("-safe").arg("0")
+            .arg("-i").arg(&list)
+            .arg("-t").arg(&target.to_string())
+            .arg("-c").arg("copy")
+            .arg("-progress").arg("pipe:1").arg(output);
+        self.progress_run(cmd, target, "Looping with crossfade", progress_cb)?;
+
+        let _ = std::fs::remove_file(&xfade_clip);
 
         Ok(())
     }
@@ -715,6 +779,7 @@ impl Renderer {
         music_list: &str,
         duration: f64,
         settings: &RenderSettings,
+        ambient_list: Option<&str>,
         progress_cb: &impl Fn(RenderProgress),
     ) -> Result<String> {
         let out_dir = std::path::Path::new(&settings.output_folder);
@@ -735,40 +800,82 @@ impl Renderer {
         let mut cmd = Command::new(&self.ffmpeg_path);
         cmd.arg("-y")
             .arg("-i").arg(video)
-            .arg("-f").arg("concat")
-            .arg("-safe").arg("0")
+            .arg("-f").arg("concat").arg("-safe").arg("0")
             .arg("-i").arg(music_list);
 
         let use_watermark = settings.watermark.enabled && !settings.watermark.image_path.is_empty();
+        let use_ambient = ambient_list.is_some();
 
         if use_watermark {
             cmd.arg("-i").arg(&settings.watermark.image_path);
         }
+        if use_ambient {
+            cmd.arg("-f").arg("concat").arg("-safe").arg("0")
+                .arg("-i").arg(ambient_list.unwrap());
+        }
 
+        let mut fc_parts: Vec<String> = Vec::new();
+
+        // Watermark video filter
         if use_watermark {
             let px = settings.watermark.position_x;
             let py = settings.watermark.position_y;
             let sc = settings.watermark.scale;
-
             let (vw, vh) = self.probe_video_dims(video).unwrap_or((1920, 1080));
             let (wm_ow, wm_oh) = self.probe_video_dims(&settings.watermark.image_path).unwrap_or((100, 100));
-
             let wm_w = (vw as f64 * sc / 100.0).round().max(1.0) as i32;
             let wm_h = (wm_w as f64 * wm_oh as f64 / wm_ow as f64).round().max(1.0) as i32;
             let ox = ((vw as f64 - wm_w as f64) * px / 100.0).round() as i32;
             let oy = ((vh as f64 - wm_h as f64) * py / 100.0).round() as i32;
+            fc_parts.push(format!("[2:v]scale={}:{}[wm]", wm_w, wm_h));
+            fc_parts.push(format!("[0:v][wm]overlay={}:{}[vout]", ox, oy));
+        }
 
-            let filter = format!(
-                "[2:v]scale={}:{}[wm];[0:v][wm]overlay={}:{}[vout]",
-                wm_w, wm_h, ox, oy
-            );
+        // Ambient audio mixing
+        if use_ambient {
+            let ambient_idx = if use_watermark { 3 } else { 2 };
+            let mv = settings.music_volume;
+            let av = settings.ambient_volume;
+            fc_parts.push(format!("[1:a]volume={}[music]", mv));
+            fc_parts.push(format!("[{}:a]volume={}[ambient]", ambient_idx, av));
+            fc_parts.push("[music][ambient]amix=inputs=2:duration=first[aout]".to_string());
+        }
 
-            cmd.arg("-filter_complex").arg(&filter);
-            cmd.args(["-map", "[vout]", "-map", "1:a:0"]);
-            self.enc_opts(&mut cmd, settings);
+        // Apply filter complex
+        if !fc_parts.is_empty() {
+            cmd.arg("-filter_complex").arg(&fc_parts.join(";"));
+        }
+
+        // Map streams
+        if use_watermark {
+            cmd.args(["-map", "[vout]"]);
         } else {
-            cmd.args(["-map", "0:v:0", "-map", "1:a:0"]);
+            cmd.args(["-map", "0:v:0"]);
             cmd.arg("-c:v").arg("copy");
+        }
+
+        if use_ambient {
+            cmd.args(["-map", "[aout]"]);
+        } else {
+            cmd.args(["-map", "1:a:0"]);
+        }
+
+        if use_watermark {
+            self.enc_opts(&mut cmd, settings);
+        }
+
+        match &settings.audio_normalization {
+            AudioNormalization::Lufs14 => {
+                cmd.arg("-af").arg("loudnorm=I=-14:LRA=7:TP=-1");
+            }
+            AudioNormalization::Lufs23 => {
+                cmd.arg("-af").arg("loudnorm=I=-23:LRA=7:TP=-2");
+            }
+            AudioNormalization::Custom(target) => {
+                let filter = format!("loudnorm=I={}:LRA=7:TP=-1", target);
+                cmd.arg("-af").arg(&filter);
+            }
+            AudioNormalization::Off => {}
         }
 
         cmd.arg("-c:a").arg("aac").arg("-b:a").arg("192k");
