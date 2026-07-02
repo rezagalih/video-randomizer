@@ -132,6 +132,7 @@ pub struct RenderSettings {
     pub ambient_path: String,
     pub music_volume: f64,
     pub ambient_volume: f64,
+    pub crf: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

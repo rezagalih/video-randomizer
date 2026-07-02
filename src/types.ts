@@ -63,6 +63,7 @@ export interface RenderSettings {
   ambient_path: string;
   music_volume: number;
   ambient_volume: number;
+  crf: number;
 }
 
 export interface RenderProgress {

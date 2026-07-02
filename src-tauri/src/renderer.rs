@@ -903,13 +903,14 @@ impl Renderer {
 
         #[cfg(target_os = "macos")]
         if is_hardware {
-            cmd.args(["-c:v", "h264_videotoolbox", "-b:v", "5M"]);
+            let vt_crf = ((s.crf as f64 / 51.0) * 100.0) as u32;
+            cmd.args(["-c:v", "h264_videotoolbox", "-crf", &vt_crf.to_string()]);
             return;
         }
 
         #[cfg(target_os = "windows")]
         if is_hardware {
-            cmd.args(["-c:v", "h264_nvenc", "-b:v", "5M"]);
+            cmd.args(["-c:v", "h264_nvenc", "-cq", &s.crf.to_string()]);
             return;
         }
 
@@ -918,7 +919,8 @@ impl Renderer {
             EncodingSpeed::Balanced => "medium",
             EncodingSpeed::Quality => "veryslow",
         };
-        cmd.args(["-c:v", "libx264", "-preset", preset, "-crf", "23"]);
+        let crf = s.crf.to_string();
+        cmd.args(["-c:v", "libx264", "-preset", preset, "-crf", &crf]);
     }
 
     fn clip_dur(&self, path: &str) -> Result<f64> {

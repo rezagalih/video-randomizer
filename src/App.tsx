@@ -62,6 +62,7 @@ function defaultSettings(): RenderSettings {
     ambient_path: "",
     music_volume: 0.8,
     ambient_volume: 0.3,
+    crf: 23,
   };
 }
 
@@ -374,6 +375,7 @@ export default function App() {
     ambientDuration: number;
     musicVolume: number;
     ambientVolume: number;
+    crf: number;
   }) {
     const { invoke } = await import("@tauri-apps/api/core");
 
@@ -415,6 +417,7 @@ export default function App() {
       ambient_path: data.ambientPath,
       music_volume: data.musicVolume,
       ambient_volume: data.ambientVolume,
+      crf: data.crf,
     };
 
     function loopPlaylist(baseOrder: number[], music: MusicFile[], targetDuration: number): number[] {

@@ -153,7 +153,28 @@ export default function EncodingSettings({ settings, onChange }: Props) {
         </div>
       </div>
       <div className="form-group">
-        <label>Music Volume: {Math.round(settings.music_volume * 100)}%</label>
+          <label>Video Quality (CRF)</label>
+          <p style={{ fontSize: 13, color: "var(--text2)", marginBottom: 8 }}>
+            Lower value = better quality, larger file. Recommended: 18-28. Default: 23.
+          </p>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span style={{ fontSize: 12, color: "var(--text2)" }}>Higher quality</span>
+            <input
+              type="range"
+              min={0}
+              max={51}
+              value={settings.crf}
+              onChange={(e) => update({ crf: Number(e.target.value) })}
+              style={{ flex: 1 }}
+            />
+            <span style={{ fontSize: 12, color: "var(--text2)" }}>Lower quality</span>
+          </div>
+          <div style={{ textAlign: "center", fontSize: 13, marginTop: 4, color: "var(--text2)" }}>
+            CRF: {settings.crf} {settings.crf <= 18 ? "(High quality)" : settings.crf <= 23 ? "(Good quality)" : settings.crf <= 28 ? "(Medium quality)" : "(Low quality)"}
+          </div>
+        </div>
+        <div className="form-group">
+          <label>Music Volume: {Math.round(settings.music_volume * 100)}%</label>
         <input
           type="range"
           min={0}
