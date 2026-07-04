@@ -15,9 +15,10 @@ import SequenceDisplay from "./components/SequenceDisplay";
 import RenderProgressPanel from "./components/RenderProgress";
 import QueuePanel from "./components/QueuePanel";
 import MergerTool from "./components/MergerTool";
+import TrimmerTool from "./components/TrimmerTool";
 import WizardModal from "./components/WizardModal";
 
-type Tab = "import" | "settings" | "render" | "merger";
+type Tab = "import" | "settings" | "render" | "merger" | "trimmer";
 
 function defaultSettings(): RenderSettings {
   const now = new Date();
@@ -96,6 +97,7 @@ interface PersistedState {
   musicFolders?: string[];
   ambientPath?: string;
   ambientDuration?: number;
+  trimmerOutputFolder?: string;
 }
 
 export default function App() {
@@ -119,6 +121,7 @@ export default function App() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [ambientPath, setAmbientPath] = useState("");
   const [ambientDuration, setAmbientDuration] = useState(0);
+  const [trimmerOutputFolder, setTrimmerOutputFolder] = useState("");
   const queueCancelledRef = useRef(false);
   const statePath = useRef<string>("");
   const loaded = useRef(false);
@@ -140,6 +143,7 @@ export default function App() {
         if (data.musicFolders) setMusicFolders(data.musicFolders);
         if (data.ambientPath) setAmbientPath(data.ambientPath);
         if (data.ambientDuration) setAmbientDuration(data.ambientDuration);
+        if (data.trimmerOutputFolder) setTrimmerOutputFolder(data.trimmerOutputFolder);
       } catch {
         // no saved state, use defaults
       }
@@ -147,10 +151,10 @@ export default function App() {
     })();
   }, []);
 
-  const save = useCallback(async (v: VideoFile[], m: MusicFile[], seq: SequenceItem[], s: RenderSettings, mo: number[], iv: VideoFile | null, vf: string[], mf: string[], ap: string, ad: number) => {
+  const save = useCallback(async (v: VideoFile[], m: MusicFile[], seq: SequenceItem[], s: RenderSettings, mo: number[], iv: VideoFile | null, vf: string[], mf: string[], ap: string, ad: number, tof: string) => {
     if (!statePath.current) return;
     const { invoke } = await import("@tauri-apps/api/core");
-    const data: PersistedState = { videos: v, music: m, sequence: seq, settings: s, musicOrder: mo, introVideo: iv, videoFolders: vf, musicFolders: mf, ambientPath: ap, ambientDuration: ad };
+    const data: PersistedState = { videos: v, music: m, sequence: seq, settings: s, musicOrder: mo, introVideo: iv, videoFolders: vf, musicFolders: mf, ambientPath: ap, ambientDuration: ad, trimmerOutputFolder: tof };
     try {
       await invoke("save_state", { path: statePath.current, data });
     } catch { /* ignore save errors */ }
@@ -158,8 +162,8 @@ export default function App() {
 
   useEffect(() => {
     if (!loaded.current) return;
-    save(videos, music, sequence, settings, musicOrder, introVideo, videoFolders, musicFolders, ambientPath, ambientDuration);
-  }, [videos, music, sequence, settings, musicOrder, introVideo, videoFolders, musicFolders]);
+    save(videos, music, sequence, settings, musicOrder, introVideo, videoFolders, musicFolders, ambientPath, ambientDuration, trimmerOutputFolder);
+  }, [videos, music, sequence, settings, musicOrder, introVideo, videoFolders, musicFolders, trimmerOutputFolder]);
 
   // auto-generate when entering render tab
   useEffect(() => {
@@ -593,6 +597,9 @@ export default function App() {
         <button className={tab === "merger" ? "active" : ""} onClick={() => setTab("merger")}>
           🔗 Merger
         </button>
+        <button className={tab === "trimmer" ? "active" : ""} onClick={() => setTab("trimmer")}>
+          ✂️ Trimmer
+        </button>
       </div>
       <main>
         {tab === "import" && (
@@ -731,6 +738,14 @@ export default function App() {
         {tab === "merger" && (
           <div className="panel">
             <MergerTool />
+          </div>
+        )}
+        {tab === "trimmer" && (
+          <div className="panel">
+            <TrimmerTool
+              outputFolder={trimmerOutputFolder}
+              onOutputFolderChange={setTrimmerOutputFolder}
+            />
           </div>
         )}
       </main>

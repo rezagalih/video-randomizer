@@ -152,3 +152,23 @@ pub struct MergeProgress {
     pub elapsed_secs: f64,
     pub output_path: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrimSegment {
+    pub index: usize,
+    pub label: String,
+    pub start_time: f64,
+    pub end_time: f64,
+    pub duration: f64,
+    pub output_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrimProgress {
+    pub stage: String,
+    pub percent: f64,
+    pub elapsed_secs: f64,
+    pub current_segment: usize,
+    pub total_segments: usize,
+    pub output_paths: Vec<String>,
+}

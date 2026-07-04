@@ -87,6 +87,24 @@ export interface MergeProgress {
   output_path: string;
 }
 
+export interface TrimSegment {
+  index: number;
+  label: string;
+  start_time: number;
+  end_time: number;
+  duration: number;
+  output_path: string;
+}
+
+export interface TrimProgress {
+  stage: string;
+  percent: number;
+  elapsed_secs: number;
+  current_segment: number;
+  total_segments: number;
+  output_paths: string[];
+}
+
 export interface WizardSelections {
   intro: VideoFile | null;
   videos: VideoFile[];

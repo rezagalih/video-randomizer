@@ -387,6 +387,161 @@ pub async fn merge_videos(
     Ok(out_str)
 }
 
+#[tauri::command]
+pub async fn trim_video_checkpoints(
+    state: State<'_, Mutex<AppState>>,
+    video_path: String,
+    checkpoints: Vec<f64>,
+    output_folder: String,
+    on_event: Channel<TrimProgress>,
+) -> Result<Vec<TrimSegment>, String> {
+    if checkpoints.len() < 2 {
+        return Err("Minimal 2 checkpoint diperlukan".into());
+    }
+
+    let ffmpeg = {
+        let guard = state.lock().map_err(|e| e.to_string())?;
+        guard.renderer.ffmpeg_path()
+    };
+
+    let ffprobe = {
+        let guard = state.lock().map_err(|e| e.to_string())?;
+        guard.ffprobe_path.clone()
+    };
+
+    let video_dur = metadata::get_video_duration(&video_path, &ffprobe)
+        .map_err(|e| format!("Gagal membaca durasi video: {}", e))?;
+
+    for &cp in &checkpoints {
+        if cp < 0.0 || cp > video_dur {
+            return Err(format!("Checkpoint {:.1}s di luar durasi video ({:.1}s)", cp, video_dur));
+        }
+    }
+
+    // checkpoints must be in ascending order
+    for w in checkpoints.windows(2) {
+        if w[0] > w[1] {
+            return Err("Checkpoint harus diurutkan naik".into());
+        }
+    }
+
+    std::fs::create_dir_all(&output_folder).map_err(|e| e.to_string())?;
+
+    let video_stem = std::path::Path::new(&video_path)
+        .file_stem()
+        .and_then(|n| n.to_str())
+        .unwrap_or("video");
+
+    let ext = std::path::Path::new(&video_path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("mp4");
+
+    let start = std::time::Instant::now();
+    let total = checkpoints.len() - 1;
+    let mut segments = Vec::new();
+    let mut output_paths = Vec::new();
+
+    for i in 0..total {
+        let start_time = checkpoints[i];
+        let end_time = checkpoints[i + 1];
+        let duration = end_time - start_time;
+
+        let seg_filename = format!("{}_{:02}_trimmed.{}", video_stem, i + 1, ext);
+        let out_path = std::path::PathBuf::from(&output_folder).join(&seg_filename);
+        let out_str = out_path.to_string_lossy().to_string();
+
+        let label = format!("{} → {}",
+            format_trim_time(start_time),
+            format_trim_time(end_time)
+        );
+
+        let mut cmd = std::process::Command::new(&ffmpeg);
+        cmd.arg("-y")
+            .arg("-ss").arg(start_time.to_string())
+            .arg("-i").arg(&video_path)
+            .arg("-t").arg(duration.to_string())
+            .arg("-c").arg("copy")
+            .arg(&out_str);
+
+        let stderr_path = out_path.with_extension("log");
+        let stderr_file = std::fs::File::create(&stderr_path).map_err(|e| e.to_string())?;
+
+        let mut child = cmd
+            .stdout(std::process::Stdio::null())
+            .stderr(stderr_file)
+            .spawn()
+            .map_err(|e| format!("Gagal spawn ffmpeg segmen {}: {}", i + 1, e))?;
+
+        // poll for completion
+        while child.try_wait().map_err(|e| e.to_string())?.is_none() {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            let _ = on_event.send(TrimProgress {
+                stage: format!("Trimming segmen {}/{}", i + 1, total),
+                percent: ((i as f64 + 0.5) / total as f64) * 100.0,
+                elapsed_secs: start.elapsed().as_secs_f64(),
+                current_segment: i + 1,
+                total_segments: total,
+                output_paths: output_paths.clone(),
+            });
+        }
+
+        let status = child.wait().map_err(|e| format!("Gagal wait ffmpeg segmen {}: {}", i + 1, e))?;
+        if !status.success() {
+            return Err(format!("FFmpeg gagal pada segmen {} (exit {:?})", i + 1, status.code()));
+        }
+
+        output_paths.push(out_str.clone());
+
+        segments.push(TrimSegment {
+            index: i + 1,
+            label,
+            start_time,
+            end_time,
+            duration,
+            output_path: out_str,
+        });
+
+        let _ = on_event.send(TrimProgress {
+            stage: format!("Trimmed segmen {}/{}", i + 1, total),
+            percent: ((i + 1) as f64 / total as f64) * 100.0,
+            elapsed_secs: start.elapsed().as_secs_f64(),
+            current_segment: i + 1,
+            total_segments: total,
+            output_paths: output_paths.clone(),
+        });
+    }
+
+    // cleanup log files
+    for i in 0..total {
+        let seg_filename = format!("{}_{:02}_trimmed.log", video_stem, i + 1);
+        let log_path = std::path::PathBuf::from(&output_folder).join(&seg_filename);
+        let _ = std::fs::remove_file(&log_path);
+    }
+
+    let _ = on_event.send(TrimProgress {
+        stage: "Complete".into(),
+        percent: 100.0,
+        elapsed_secs: start.elapsed().as_secs_f64(),
+        current_segment: total,
+        total_segments: total,
+        output_paths: output_paths.clone(),
+    });
+
+    Ok(segments)
+}
+
+fn format_trim_time(secs: f64) -> String {
+    let h = (secs / 3600.0) as u64;
+    let m = ((secs % 3600.0) / 60.0) as u64;
+    let s = secs % 60.0;
+    if h > 0 {
+        format!("{:02}:{:02}:{:05.2}", h, m, s)
+    } else {
+        format!("{:02}:{:05.2}", m, s)
+    }
+}
+
 fn parse_ffmpeg_time(s: &str) -> Option<f64> {
     let parts: Vec<&str> = s.split(':').collect();
     if parts.len() == 3 {

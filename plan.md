@@ -89,6 +89,79 @@ Actions:
 
 ---
 
+# Video Trimmer
+
+✅ **Implemented in v1.6.0**
+
+Fitur untuk memotong video panjang menjadi beberapa segmen pendek dengan menandai checkpoint.
+
+## Set Checkpoint
+
+User dapat menandai titik potong (checkpoint) pada timeline video:
+
+```
+Checkpoint:    a       b       c       d       e
+               |-------|-------|-------|-------|
+Segmen:          a-b     b-c     c-d     d-e
+```
+
+Contoh: Video 5 menit dengan checkpoint di menit 0, 1, 3, 4, 5 menghasilkan 4 segmen: 0-1, 1-3, 3-4, 4-5.
+
+## Input Checkpoint
+
+* Input manual: user memasukkan waktu dalam format `HH:MM:SS` atau `detik`
+* Visual timeline: klik pada posisi tertentu di timeline preview
+* Daftar checkpoint ditampilkan dan bisa dihapus/diedit
+
+## Preview Segmen
+
+Setelah checkpoint ditentukan, aplikasi menampilkan daftar segmen yang akan dihasilkan:
+
+| No | Segmen | Start | End | Duration |
+| -- | ------ | ----- | --- | -------- |
+| 1 | a → b | 00:00 | 01:00 | 01:00 |
+| 2 | b → c | 01:00 | 03:00 | 02:00 |
+| 3 | c → d | 03:00 | 04:00 | 01:00 |
+
+## Output
+
+* Setiap segmen disimpan sebagai file video terpisah
+* Atau semua segmen langsung ditambahkan ke daftar footage untuk diproses lebih lanjut (shuffle/sequential)
+
+## Actions
+
+* ✅ Reset all checkpoints
+* ✅ Preview selected segment
+* ✅ Export segments to footage list (via file system)
+
+## Implementation Details
+
+### Frontend — `TrimmerTool.tsx`
+* Tab ✂️ **Trimmer** di samping 🔗 Merger
+* Pilih video → metadata (durasi, resolusi, fps)
+* **Visual timeline** interaktif:
+  * Klik untuk tambah checkpoint di posisi itu
+  * Hover untuk lihat time indicator (m:ss)
+  * Klik marker (garis putih) untuk hapus checkpoint
+  * Segmen berwarna berbeda antar checkpoint
+* Tabel input manual untuk edit presisi
+* Tabel preview segmen (start, end, duration)
+* Progress bar saat trimming
+* Output folder persist antar session (via `App.tsx` state)
+
+### Backend — `commands.rs`
+* Command `trim_video_checkpoints`:
+  * Validasi checkpoint (min 2, urut naik, dalam durasi video)
+  * FFmpeg `-ss -i -t -c copy` per segmen — cepat, no re-encode
+  * Report progress via `Channel<TrimProgress>`
+* Output: `video_01_trimmed.mp4`, `video_02_trimmed.mp4`, ...
+
+### Types — `types.ts` / `models.rs`
+* `TrimSegment` — index, label, start_time, end_time, duration, output_path
+* `TrimProgress` — stage, percent, elapsed_secs, current_segment, total_segments, output_paths
+
+---
+
 # Video Playback Strategy
 
 ## Shuffle
