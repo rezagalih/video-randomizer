@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { QueueItem } from "../types";
 
 interface Props {
@@ -10,6 +11,7 @@ interface Props {
   onAddToQueue: () => void;
   onStartQueue: () => void;
   onRemove: (id: string) => void;
+  onRename: (id: string, filename: string) => void;
   onMoveUp: (id: string) => void;
   onMoveDown: (id: string) => void;
   onCancelQueue: () => void;
@@ -28,10 +30,28 @@ function statusLabel(status: QueueItem["status"]): string {
 export default function QueuePanel({
   queue, isQueueRunning, currentJobId, canAdd,
   autoRegenerate, onAutoRegenerateChange,
-  onAddToQueue, onStartQueue, onRemove, onMoveUp, onMoveDown, onCancelQueue,
+  onAddToQueue, onStartQueue, onRemove, onRename, onMoveUp, onMoveDown, onCancelQueue,
 }: Props) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
   const pendingCount = queue.filter(j => j.status === "pending").length;
   const isProcessing = isQueueRunning || queue.some(j => j.status === "rendering");
+
+  function startRename(item: QueueItem) {
+    setEditingId(item.id);
+    setEditingName(item.settings.output_filename || item.name);
+  }
+
+  function cancelRename() {
+    setEditingId(null);
+    setEditingName("");
+  }
+
+  function saveRename(id: string) {
+    if (!editingName.trim()) return;
+    onRename(id, editingName);
+    cancelRename();
+  }
 
   return (
     <div className="card">
@@ -86,7 +106,33 @@ export default function QueuePanel({
                   }}>
                     <td>{i + 1}</td>
                     <td style={{ wordBreak: "break-all", fontSize: 13 }}>
-                      {item.name}
+                      {editingId === item.id ? (
+                        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          <input
+                            value={editingName}
+                            onChange={(e) => setEditingName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") saveRename(item.id);
+                              if (e.key === "Escape") cancelRename();
+                            }}
+                            autoFocus
+                            style={{ minWidth: 0, flex: 1, fontSize: 12, padding: "4px 6px" }}
+                          />
+                          <button
+                            style={{ fontSize: 11, padding: "2px 6px" }}
+                            disabled={!editingName.trim()}
+                            onClick={() => saveRename(item.id)}
+                            title="Save rename"
+                          >✓</button>
+                          <button
+                            style={{ fontSize: 11, padding: "2px 6px" }}
+                            onClick={cancelRename}
+                            title="Cancel rename"
+                          >✕</button>
+                        </div>
+                      ) : (
+                        item.name
+                      )}
                       <span style={{
                         display: "inline-block",
                         fontSize: 10,
@@ -127,6 +173,11 @@ export default function QueuePanel({
                         <div style={{ display: "flex", gap: 4 }}>
                           {isPending && (
                             <>
+                              <button
+                                style={{ fontSize: 11, padding: "2px 6px" }}
+                                onClick={() => startRename(item)}
+                                title="Rename"
+                              >Rename</button>
                               <button
                                 style={{ fontSize: 11, padding: "2px 6px" }}
                                 disabled={i === 0}

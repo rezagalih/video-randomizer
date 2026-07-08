@@ -1,3 +1,4 @@
+use std::io::BufRead;
 use std::sync::{Arc, Mutex};
 use tauri::{Manager, State};
 use tauri::ipc::Channel;
@@ -488,7 +489,9 @@ pub async fn trim_video_checkpoints(
 
         let status = child.wait().map_err(|e| format!("Gagal wait ffmpeg segmen {}: {}", i + 1, e))?;
         if !status.success() {
-            return Err(format!("FFmpeg gagal pada segmen {} (exit {:?})", i + 1, status.code()));
+            let log_content = std::fs::read_to_string(&stderr_path).unwrap_or_default();
+            let detail = if log_content.is_empty() { "no detail".into() } else { log_content.trim().to_string() };
+            return Err(format!("FFmpeg gagal pada segmen {} (exit {:?}):\n{}", i + 1, status.code(), detail));
         }
 
         output_paths.push(out_str.clone());
@@ -529,6 +532,204 @@ pub async fn trim_video_checkpoints(
     });
 
     Ok(segments)
+}
+
+fn get_remaster_filter(preset: &str) -> Option<&'static str> {
+    match preset {
+        "none" => None,
+        "warm_natural" => Some("equalizer=f=50:t=q:w=1:g=2.5,equalizer=f=200:t=q:w=1:g=2,equalizer=f=3000:t=q:w=0.5:g=-1,equalizer=f=8000:t=q:w=1:g=-2.5,equalizer=f=12000:t=q:w=1:g=-3,acompressor=threshold=-15dB:ratio=2.5:attack=10:release=80"),
+        "analog_vintage" => Some("aexciter=amount=0.25,equalizer=f=80:t=q:w=1:g=3,equalizer=f=150:t=q:w=1:g=2,equalizer=f=5000:t=q:w=1:g=-1,equalizer=f=10000:t=q:w=1:g=-3,acompressor=threshold=-18dB:ratio=2:attack=20:release=100,alimiter=limit=-1.5dB:attack=0.1:release=1"),
+        "smooth_broadcast" => Some("equalizer=f=100:t=q:w=1:g=1.5,equalizer=f=300:t=q:w=1:g=3,equalizer=f=1000:t=q:w=1:g=1,equalizer=f=6000:t=q:w=1:g=-2,equalizer=f=12000:t=q:w=1:g=-4,acompressor=threshold=-20dB:ratio=3:attack=5:release=50,alimiter=limit=-1dB:attack=0.1:release=0.5"),
+        "voice_clear" => Some("equalizer=f=200:t=q:w=1:g=1,equalizer=f=3000:t=q:w=1:g=3,equalizer=f=5000:t=q:w=1:g=2,equalizer=f=8000:t=q:w=1:g=-1.5,equalizer=f=12000:t=q:w=1:g=-2,acompressor=threshold=-14dB:ratio=2.5:attack=5:release=60,alimiter=limit=-1dB:attack=0.1:release=0.5"),
+        "heavy_bass" => Some("equalizer=f=40:t=q:w=1:g=5,equalizer=f=80:t=q:w=1:g=3.5,equalizer=f=150:t=q:w=1:g=2,equalizer=f=400:t=q:w=1:g=-1,equalizer=f=1000:t=q:w=0.5:g=-1.5,acompressor=threshold=-20dB:ratio=4:attack=5:release=40,alimiter=limit=-1dB:attack=0.1:release=0.5"),
+        "lo_fi_chill" => Some("equalizer=f=60:t=q:w=1:g=2,equalizer=f=200:t=q:w=1:g=2.5,equalizer=f=400:t=q:w=1:g=1.5,equalizer=f=4000:t=q:w=1:g=-3,equalizer=f=10000:t=q:w=1:g=-5,acompressor=threshold=-15dB:ratio=2:attack=15:release=120,alimiter=limit=-2dB:attack=0.5:release=1"),
+        "phonk_drift" => Some("equalizer=f=40:t=q:w=1:g=6,equalizer=f=80:t=q:w=1:g=4,equalizer=f=150:t=q:w=1:g=3,equalizer=f=2000:t=q:w=1:g=2,equalizer=f=5000:t=q:w=1:g=1.5,equalizer=f=10000:t=q:w=1:g=1,equalizer=f=14000:t=q:w=1:g=2,acompressor=threshold=-22dB:ratio=4:attack=3:release=30,alimiter=limit=-0.5dB:attack=0.05:release=0.3"),
+        "edm_electro" => Some("equalizer=f=40:t=q:w=1:g=4,equalizer=f=60:t=q:w=1:g=3,equalizer=f=200:t=q:w=1:g=-1,equalizer=f=400:t=q:w=1:g=-2,equalizer=f=5000:t=q:w=1:g=2.5,equalizer=f=10000:t=q:w=1:g=3,equalizer=f=16000:t=q:w=1:g=2,acompressor=threshold=-18dB:ratio=3:attack=5:release=40,alimiter=limit=-1dB:attack=0.1:release=0.5"),
+        "hip_hop_rnb" => Some("equalizer=f=50:t=q:w=1:g=4,equalizer=f=100:t=q:w=1:g=3,equalizer=f=250:t=q:w=1:g=1.5,equalizer=f=400:t=q:w=0.5:g=-1.5,equalizer=f=3000:t=q:w=1:g=2,equalizer=f=6000:t=q:w=1:g=1,equalizer=f=10000:t=q:w=1:g=-1,equalizer=f=14000:t=q:w=1:g=-2,acompressor=threshold=-16dB:ratio=2.5:attack=8:release=60,alimiter=limit=-1dB:attack=0.1:release=0.5"),
+        "rock_metal" => Some("equalizer=f=60:t=q:w=1:g=2,equalizer=f=120:t=q:w=1:g=1,equalizer=f=800:t=q:w=1:g=2,equalizer=f=2500:t=q:w=1:g=3,equalizer=f=5000:t=q:w=1:g=2,equalizer=f=8000:t=q:w=1:g=1.5,equalizer=f=12000:t=q:w=1:g=-1,acompressor=threshold=-14dB:ratio=3.5:attack=3:release=30,alimiter=limit=-0.5dB:attack=0.05:release=0.3"),
+        "jazz_akustik" => Some("equalizer=f=80:t=q:w=1:g=1.5,equalizer=f=250:t=q:w=1:g=2,equalizer=f=1000:t=q:w=1:g=1,equalizer=f=4000:t=q:w=1:g=-0.5,equalizer=f=8000:t=q:w=1:g=-1,equalizer=f=12000:t=q:w=1:g=-1.5,acompressor=threshold=-10dB:ratio=1.5:attack=30:release=150"),
+        "classical_orchestral" => Some("equalizer=f=40:t=q:w=0.5:g=1,equalizer=f=200:t=q:w=1:g=1,equalizer=f=500:t=q:w=1:g=0.5,equalizer=f=2000:t=q:w=1:g=1,equalizer=f=5000:t=q:w=0.5:g=1.5,equalizer=f=10000:t=q:w=1:g=1,equalizer=f=16000:t=q:w=1:g=2,acompressor=threshold=-8dB:ratio=1.2:attack=50:release=200"),
+        "reggae_dub" => Some("equalizer=f=40:t=q:w=1:g=4,equalizer=f=80:t=q:w=1:g=3,equalizer=f=200:t=q:w=1:g=2,equalizer=f=500:t=q:w=1:g=1,equalizer=f=3000:t=q:w=1:g=-1.5,equalizer=f=8000:t=q:w=1:g=-2.5,equalizer=f=12000:t=q:w=1:g=-3,acompressor=threshold=-15dB:ratio=2.5:attack=10:release=80,alimiter=limit=-1.5dB:attack=0.1:release=1"),
+        "podcast_audiobook" => Some("equalizer=f=80:t=q:w=1:g=2,equalizer=f=150:t=q:w=1:g=1.5,equalizer=f=300:t=q:w=1:g=3,equalizer=f=1000:t=q:w=1:g=2,equalizer=f=3000:t=q:w=1:g=2,equalizer=f=6000:t=q:w=1:g=-2,equalizer=f=10000:t=q:w=1:g=-3,equalizer=f=14000:t=q:w=1:g=-5,anlmdn=s=0.5:p=0.4:r=1.5,acompressor=threshold=-24dB:ratio=3.5:attack=3:release=40,alimiter=limit=-0.5dB:attack=0.1:release=0.5"),
+        "acoustic_guitar" => Some("equalizer=f=100:t=q:w=1:g=2,equalizer=f=500:t=q:w=1:g=2.5,equalizer=f=1000:t=q:w=1:g=2,equalizer=f=3000:t=q:w=1:g=1.5,equalizer=f=6000:t=q:w=1:g=2,equalizer=f=10000:t=q:w=1:g=-1,acompressor=threshold=-12dB:ratio=2:attack=15:release=100"),
+        "piano_keys" => Some("equalizer=f=80:t=q:w=1:g=1,equalizer=f=250:t=q:w=1:g=1.5,equalizer=f=1000:t=q:w=1:g=2,equalizer=f=3000:t=q:w=1:g=3,equalizer=f=6000:t=q:w=1:g=2,equalizer=f=10000:t=q:w=1:g=1.5,equalizer=f=14000:t=q:w=1:g=2,acompressor=threshold=-10dB:ratio=1.5:attack=20:release=120"),
+        "cinematic" => Some("equalizer=f=40:t=q:w=1:g=3,equalizer=f=80:t=q:w=1:g=2,equalizer=f=200:t=q:w=0.5:g=-1,equalizer=f=1000:t=q:w=0.5:g=-1,equalizer=f=5000:t=q:w=1:g=2,equalizer=f=12000:t=q:w=1:g=3,equalizer=f=16000:t=q:w=1:g=2,acompressor=threshold=-14dB:ratio=2.5:attack=10:release=60,alimiter=limit=-1dB:attack=0.1:release=0.5"),
+        "ambient_drone" => Some("equalizer=f=60:t=q:w=1:g=2,equalizer=f=200:t=q:w=1:g=1,equalizer=f=4000:t=q:w=1:g=-3,equalizer=f=8000:t=q:w=1:g=-5,equalizer=f=12000:t=q:w=1:g=-6,acompressor=threshold=-18dB:ratio=2:attack=30:release=150,alimiter=limit=-2dB:attack=0.5:release=1"),
+        "soul_funk" => Some("equalizer=f=60:t=q:w=1:g=2.5,equalizer=f=200:t=q:w=1:g=2,equalizer=f=500:t=q:w=1:g=1,equalizer=f=2000:t=q:w=1:g=1.5,equalizer=f=5000:t=q:w=1:g=2,equalizer=f=10000:t=q:w=1:g=1,acompressor=threshold=-14dB:ratio=2.5:attack=8:release=60,alimiter=limit=-1dB:attack=0.1:release=0.5"),
+        "latin" => Some("equalizer=f=80:t=q:w=1:g=2,equalizer=f=250:t=q:w=1:g=1.5,equalizer=f=1000:t=q:w=0.5:g=1,equalizer=f=3000:t=q:w=1:g=2.5,equalizer=f=6000:t=q:w=1:g=2,equalizer=f=10000:t=q:w=1:g=1,equalizer=f=14000:t=q:w=1:g=1.5,acompressor=threshold=-15dB:ratio=2.5:attack=10:release=60,alimiter=limit=-1dB:attack=0.1:release=0.5"),
+        "kpop_pop" => Some("equalizer=f=50:t=q:w=1:g=3,equalizer=f=100:t=q:w=1:g=2,equalizer=f=300:t=q:w=1:g=1.5,equalizer=f=1000:t=q:w=0.5:g=1,equalizer=f=4000:t=q:w=1:g=2,equalizer=f=8000:t=q:w=1:g=2.5,equalizer=f=12000:t=q:w=1:g=2,equalizer=f=16000:t=q:w=1:g=1.5,acompressor=threshold=-16dB:ratio=3:attack=5:release=40,alimiter=limit=-0.5dB:attack=0.05:release=0.3"),
+        "trap_drill" => Some("equalizer=f=30:t=q:w=1:g=6,equalizer=f=60:t=q:w=1:g=4,equalizer=f=120:t=q:w=1:g=2,equalizer=f=250:t=q:w=1:g=-2,equalizer=f=500:t=q:w=1:g=-2.5,equalizer=f=2000:t=q:w=1:g=2,equalizer=f=6000:t=q:w=1:g=2.5,equalizer=f=10000:t=q:w=1:g=1,equalizer=f=14000:t=q:w=1:g=2,acompressor=threshold=-22dB:ratio=4:attack=3:release=25,alimiter=limit=-0.5dB:attack=0.05:release=0.3"),
+        "drum_bass" => Some("equalizer=f=40:t=q:w=1:g=4,equalizer=f=80:t=q:w=1:g=3,equalizer=f=200:t=q:w=1:g=1,equalizer=f=400:t=q:w=1:g=-1.5,equalizer=f=1000:t=q:w=0.5:g=-2,equalizer=f=3000:t=q:w=1:g=1,equalizer=f=6000:t=q:w=1:g=2,equalizer=f=12000:t=q:w=1:g=1.5,acompressor=threshold=-18dB:ratio=3:attack=4:release=35,alimiter=limit=-1dB:attack=0.05:release=0.3"),
+        "techno_house" => Some("equalizer=f=40:t=q:w=1:g=3,equalizer=f=80:t=q:w=1:g=2,equalizer=f=200:t=q:w=1:g=1,equalizer=f=500:t=q:w=1:g=-1,equalizer=f=2000:t=q:w=1:g=2,equalizer=f=5000:t=q:w=1:g=2.5,equalizer=f=10000:t=q:w=1:g=3,equalizer=f=16000:t=q:w=1:g=2,acompressor=threshold=-16dB:ratio=3.5:attack=5:release=30,alimiter=limit=-0.5dB:attack=0.05:release=0.3"),
+        "blues" => Some("equalizer=f=80:t=q:w=1:g=2,equalizer=f=250:t=q:w=1:g=2.5,equalizer=f=600:t=q:w=1:g=2,equalizer=f=1500:t=q:w=1:g=1.5,equalizer=f=4000:t=q:w=1:g=1,equalizer=f=8000:t=q:w=1:g=-0.5,equalizer=f=12000:t=q:w=1:g=-1.5,acompressor=threshold=-12dB:ratio=2:attack=15:release=80,alimiter=limit=-1.5dB:attack=0.1:release=1"),
+        "vocal_boost" => Some("equalizer=f=200:t=q:w=1:g=2,equalizer=f=1000:t=q:w=1:g=2.5,equalizer=f=3000:t=q:w=1:g=3,equalizer=f=5000:t=q:w=1:g=2,equalizer=f=8000:t=q:w=1:g=1,equalizer=f=12000:t=q:w=1:g=-1.5,acompressor=threshold=-16dB:ratio=2.5:attack=5:release=50,alimiter=limit=-1dB:attack=0.1:release=0.5"),
+        "bass_boost" => Some("equalizer=f=40:t=q:w=1:g=5,equalizer=f=80:t=q:w=1:g=4,equalizer=f=160:t=q:w=1:g=2,equalizer=f=300:t=q:w=1:g=-1,equalizer=f=600:t=q:w=1:g=-1.5,acompressor=threshold=-18dB:ratio=3:attack=8:release=50,alimiter=limit=-1dB:attack=0.1:release=0.5"),
+        "afro_house" => Some("equalizer=f=60:t=q:w=1:g=3,equalizer=f=120:t=q:w=1:g=2.5,equalizer=f=400:t=q:w=1:g=2,equalizer=f=800:t=q:w=1:g=1.5,equalizer=f=2000:t=q:w=1:g=1,equalizer=f=5000:t=q:w=1:g=-0.5,equalizer=f=10000:t=q:w=1:g=-2,equalizer=f=14000:t=q:w=1:g=-3,acompressor=threshold=-18dB:ratio=2.2:attack=10:release=200,alimiter=limit=-1.5dB"),
+        _ => None,
+    }
+}
+
+#[tauri::command]
+pub async fn remaster_audio(
+    state: State<'_, Mutex<AppState>>,
+    files: Vec<String>,
+    presets: Vec<String>,
+    output_folder: String,
+    output_format: String,
+    use_limiter: bool,
+    on_event: Channel<RemasterProgress>,
+) -> Result<Vec<String>, String> {
+    if files.is_empty() {
+        return Err("No audio files provided".into());
+    }
+
+    if presets.len() != files.len() {
+        return Err("Presets count must match files count".into());
+    }
+
+    // validate all presets first
+    for (i, p) in presets.iter().enumerate() {
+        if p.is_empty() || p == "none" { continue; }
+        if get_remaster_filter(p).is_none() {
+            return Err(format!("Unknown preset '{}' for file {}", p, i + 1));
+        }
+    }
+
+    let (ffmpeg, ffprobe) = {
+        let guard = state.lock().map_err(|e| e.to_string())?;
+        (guard.renderer.ffmpeg_path(), guard.ffprobe_path.clone())
+    };
+
+    std::fs::create_dir_all(&output_folder).map_err(|e| e.to_string())?;
+
+    let ext = match output_format.as_str() {
+        "wav" => "wav",
+        "flac" => "flac",
+        _ => "mp3",
+    };
+
+    let start = std::time::Instant::now();
+    let total = files.len();
+    let mut output_paths = Vec::new();
+
+    for (i, path) in files.iter().enumerate() {
+        let file_preset = &presets[i];
+        let mut filter = get_remaster_filter(file_preset).map(|f| f.to_string());
+        if !use_limiter {
+            if let Some(ref mut f) = filter {
+                if let Some(pos) = f.find(",alimiter=") {
+                    f.truncate(pos);
+                }
+            }
+        }
+
+        let filename = std::path::Path::new(path)
+            .file_stem()
+            .and_then(|n| n.to_str())
+            .unwrap_or("audio");
+
+        let out_filename = if file_preset.is_empty() || file_preset == "none" {
+            format!("{}.{}", filename, ext)
+        } else {
+            format!("{}_{}_remastered.{}", filename, file_preset, ext)
+        };
+
+        let out_path = std::path::PathBuf::from(&output_folder).join(&out_filename);
+        let out_str = out_path.to_string_lossy().to_string();
+
+        let _ = on_event.send(RemasterProgress {
+            stage: format!("Remastering {}/{}", i + 1, total),
+            percent: ((i as f64 / total as f64) * 100.0).max(0.1),
+            elapsed_secs: start.elapsed().as_secs_f64(),
+            current_file: i + 1,
+            total_files: total,
+            current_filename: out_filename.clone(),
+            output_paths: output_paths.clone(),
+        });
+
+        // get audio duration for progress tracking
+        let file_dur = metadata::get_video_duration(path, &ffprobe).ok();
+
+        let mut cmd = std::process::Command::new(&ffmpeg);
+        cmd.arg("-y").arg("-i").arg(path);
+
+        if let Some(f) = filter {
+            cmd.arg("-af").arg(f);
+        }
+
+        match ext {
+            "wav" => {
+                cmd.arg("-c:a").arg("pcm_s16le");
+            }
+            "flac" => {
+                cmd.arg("-c:a").arg("flac");
+            }
+            _ => {
+                cmd.arg("-c:a").arg("libmp3lame").arg("-b:a").arg("320k");
+            }
+        }
+
+        cmd.arg(&out_str);
+
+        let mut child = cmd
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("Gagal spawn ffmpeg: {}", e))?;
+
+        // read stderr for progress + capture error lines
+        let mut stderr_log = String::new();
+        if let Some(stderr) = child.stderr.take() {
+            let reader = std::io::BufReader::new(stderr);
+            for line in reader.lines() {
+                if let Ok(line) = line {
+                    if let Some(time_str) = line.split("time=").nth(1) {
+                        let time_str = time_str.split_whitespace().next().unwrap_or("");
+                        if let Some(secs) = parse_ffmpeg_time(time_str) {
+                            let file_pct = if let Some(dur) = file_dur {
+                                if dur > 0.0 { ((secs / dur) * 100.0).min(99.0) } else { 50.0 }
+                            } else {
+                                50.0
+                            };
+                            let overall_pct = ((i as f64 + file_pct / 100.0) / total as f64) * 100.0;
+                            let _ = on_event.send(RemasterProgress {
+                                stage: format!("Remastering {}/{} — {}%", i + 1, total, file_pct as u32),
+                                percent: overall_pct.min(99.0),
+                                elapsed_secs: start.elapsed().as_secs_f64(),
+                                current_file: i + 1,
+                                total_files: total,
+                                current_filename: out_filename.clone(),
+                                output_paths: output_paths.clone(),
+                            });
+                        }
+                    } else if line.contains("error") || line.contains("Error") || line.contains("Invalid") || line.contains("failed") {
+                        stderr_log.push_str(&line);
+                        stderr_log.push('\n');
+                    }
+                }
+            }
+        }
+
+        let status = child.wait().map_err(|e| format!("Gagal wait ffmpeg: {}", e))?;
+        if !status.success() {
+            let detail = if stderr_log.is_empty() { "no detail".into() } else { stderr_log };
+            return Err(format!("FFmpeg gagal pada file {}/{}: {}\n{}", i + 1, total, filename, detail));
+        }
+
+        output_paths.push(out_str.clone());
+    }
+
+    let _ = on_event.send(RemasterProgress {
+        stage: "Complete".into(),
+        percent: 100.0,
+        elapsed_secs: start.elapsed().as_secs_f64(),
+        current_file: total,
+        total_files: total,
+        current_filename: String::new(),
+        output_paths: output_paths.clone(),
+    });
+
+    Ok(output_paths)
 }
 
 fn format_trim_time(secs: f64) -> String {

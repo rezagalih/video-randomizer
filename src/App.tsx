@@ -86,6 +86,31 @@ function durationModeLabel(mode: RenderSettings["duration_mode"]): string {
   }
 }
 
+function ensureMp4Extension(filename: string): string {
+  const trimmed = filename.trim();
+  if (!trimmed) return "untitled.mp4";
+  return /\.[^./\\]+$/.test(trimmed) ? trimmed : `${trimmed}.mp4`;
+}
+
+function uniqueQueueFilename(filename: string, queue: QueueItem[], excludeId?: string): string {
+  const existing = new Set(
+    queue
+      .filter(j => j.id !== excludeId && j.status === "pending")
+      .map(j => j.settings.output_filename)
+  );
+  let unique = ensureMp4Extension(filename);
+  if (!existing.has(unique)) return unique;
+
+  const dotIdx = unique.lastIndexOf(".");
+  const base = dotIdx > 0 ? unique.slice(0, dotIdx) : unique;
+  const ext = dotIdx > 0 ? unique.slice(dotIdx) : "";
+  let counter = 1;
+  while (existing.has(`${base} (${counter})${ext}`)) {
+    counter++;
+  }
+  return `${base} (${counter})${ext}`;
+}
+
 interface PersistedState {
   videos: VideoFile[];
   music: MusicFile[];
@@ -163,7 +188,7 @@ export default function App() {
   useEffect(() => {
     if (!loaded.current) return;
     save(videos, music, sequence, settings, musicOrder, introVideo, videoFolders, musicFolders, ambientPath, ambientDuration, trimmerOutputFolder);
-  }, [videos, music, sequence, settings, musicOrder, introVideo, videoFolders, musicFolders, trimmerOutputFolder]);
+  }, [videos, music, sequence, settings, musicOrder, introVideo, videoFolders, musicFolders, ambientPath, ambientDuration, trimmerOutputFolder]);
 
   // auto-generate when entering render tab
   useEffect(() => {
@@ -336,21 +361,7 @@ export default function App() {
 
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
-    // dedup filename against existing pending jobs
-    const pendingNames = new Set(
-      queue.filter(j => j.status === "pending").map(j => j.settings.output_filename)
-    );
-    let filename = settings.output_filename || "untitled.mp4";
-    if (pendingNames.has(filename)) {
-      const dotIdx = filename.lastIndexOf(".");
-      const base = dotIdx > 0 ? filename.slice(0, dotIdx) : filename;
-      const ext = dotIdx > 0 ? filename.slice(dotIdx) : "";
-      let counter = 1;
-      while (pendingNames.has(`${base} (${counter})${ext}`)) {
-        counter++;
-      }
-      filename = `${base} (${counter})${ext}`;
-    }
+    const filename = uniqueQueueFilename(settings.output_filename || "untitled.mp4", queue);
     const jobSettings = filename !== settings.output_filename
       ? { ...settings, output_filename: filename }
       : { ...settings };
@@ -409,7 +420,7 @@ export default function App() {
       now.getHours().toString().padStart(2, "0") +
       now.getMinutes().toString().padStart(2, "0") +
       now.getSeconds().toString().padStart(2, "0");
-    const filename = `${ts}.mp4`;
+    const filename = uniqueQueueFilename(`wizard_${ts}.mp4`, queue);
 
     const jobSettings: RenderSettings = {
       ...defaultSettings(),
@@ -454,6 +465,21 @@ export default function App() {
       status: "pending",
     };
     setQueue(prev => [...prev, newItem]);
+    setTab("render");
+  }
+
+  function handleRenameQueueItem(id: string, filename: string) {
+    setQueue(prev => {
+      const unique = uniqueQueueFilename(filename, prev, id);
+      return prev.map(item => item.id === id
+        ? {
+            ...item,
+            name: unique,
+            settings: { ...item.settings, output_filename: unique },
+          }
+        : item
+      );
+    });
   }
 
   async function handleStartQueue() {
@@ -717,6 +743,7 @@ export default function App() {
                 onAddToQueue={handleAddToQueue}
                 onStartQueue={handleStartQueue}
                 onRemove={handleRemoveFromQueue}
+                onRename={handleRenameQueueItem}
                 onMoveUp={handleMoveUp}
                 onMoveDown={handleMoveDown}
                 onCancelQueue={handleCancel}

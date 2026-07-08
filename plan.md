@@ -337,6 +337,8 @@ Advantages:
 
 # Wizard Mode
 
+✅ **Implemented**
+
 Tombol **Wizard Mode** di halaman utama. Saat diklik, muncul popup/modal bertahap (step-by-step).
 
 Tidak mengganggu alur Mode 1 — Segment Loop yang sudah ada.
@@ -441,6 +443,8 @@ Supported playback modes:
 ---
 
 # Ambient Sound (Ambience)
+
+✅ **Implemented**
 
 Ambient sound adalah file audio terpisah (rain, river, white noise, wind, dll)
 yang diputar terus menerus sepanjang durasi video — independent dari musik.
@@ -781,6 +785,310 @@ Delete Automatically
 
 ---
 
+# Remaster Audio (Tab Khusus)
+
+> **⚠️ HIDDEN — Tab disembunyikan dari UI (Juli 2026). Perlu riset total ulang.**
+> **Fitur opsional — terpisah dari pipeline render utama.**
+> ~~Tab 🎛️ **Remaster** di samping Merger & Trimmer.~~
+
+Tab khusus untuk remastering file audio (lagu) agar suara lebih natural dan tidak terdengar terlalu "AI".
+
+## Alur Kerja
+
+1. Import satu atau beberapa file audio (MP3, WAV, FLAC, AAC, M4A)
+2. Pilih preset remastering
+3. Preview hasil (opsional)
+4. Export file remastered
+5. Hasil remastered bisa dipakai di render tab sebagai music input
+
+## Display Setelah Import
+
+| Filename | Duration | Format | Bitrate |
+| -------- | -------- | ------ | ------- |
+
+## Preset EQ & Filter
+
+Setiap preset adalah kombinasi dari beberapa filter FFmpeg (`-af`).
+
+### None (Original)
+
+Tidak ada processing. Output same as input.
+
+### Warm Natural
+
+EQ ringan + compression untuk warmth analog.
+
+```
+equalizer=f=50:t=q:w=1:g=2.5
+equalizer=f=200:t=q:w=1:g=2
+equalizer=f=3000:t=q:w=0.5:g=-1
+equalizer=f=8000:t=q:w=1:g=-2.5
+equalizer=f=12000:t=q:w=1:g=-3
+acompressor=threshold=-15dB:ratio=2.5:attack=10:release=80
+```
+
+### Analog Vintage
+
+Tape saturation + low-end boost + gentle compression.
+
+```
+aexciter=amount=0.25
+equalizer=f=80:t=q:w=1:g=3
+equalizer=f=150:t=q:w=1:g=2
+equalizer=f=5000:t=q:w=1:g=-1
+equalizer=f=10000:t=q:w=1:g=-3
+acompressor=threshold=-18dB:ratio=2:attack=20:release=100
+alimiter=limit=-1.5dB:attack=0.1:release=1
+```
+
+### Smooth Broadcast
+
+Stylized untuk speech/vocal — mid boosted, highs smoothed.
+
+```
+equalizer=f=100:t=q:w=1:g=1.5
+equalizer=f=300:t=q:w=1:g=3
+equalizer=f=1000:t=q:w=1:g=1
+equalizer=f=6000:t=q:w=1:g=-2
+equalizer=f=12000:t=q:w=1:g=-4
+acompressor=threshold=-20dB:ratio=3:attack=5:release=50
+alimiter=limit=-1dB:attack=0.1:release=0.5
+```
+
+### Voice Clear
+
+Untuk musik dengan vokal — clarity boost tanpa sibilance.
+
+```
+equalizer=f=200:t=q:w=1:g=1
+equalizer=f=3000:t=q:w=1:g=3
+equalizer=f=5000:t=q:w=1:g=2
+equalizer=f=8000:t=q:w=1:g=-1.5
+equalizer=f=12000:t=q:w=1:g=-2
+acompressor=threshold=-14dB:ratio=2.5:attack=5:release=60
+alimiter=limit=-1dB:attack=0.1:release=0.5
+```
+
+### Heavy Bass
+
+Untuk dance/beat-driven — sub-bass boosted + tight compression.
+
+```
+equalizer=f=40:t=q:w=1:g=5
+equalizer=f=80:t=q:w=1:g=3.5
+equalizer=f=150:t=q:w=1:g=2
+equalizer=f=400:t=q:w=1:g=-1
+equalizer=f=1000:t=q:w=0.5:g=-1.5
+acompressor=threshold=-20dB:ratio=4:attack=5:release=40
+alimiter=limit=-1dB:attack=0.1:release=0.5
+```
+
+### Lo-Fi / Chill
+
+Untuk lo-fi, chillhop, ambient — warmth tape + high cut.
+
+```
+equalizer=f=60:t=q:w=1:g=2
+equalizer=f=200:t=q:w=1:g=2.5
+equalizer=f=400:t=q:w=1:g=1.5
+equalizer=f=4000:t=q:w=1:g=-3
+equalizer=f=10000:t=q:w=1:g=-5
+acompressor=threshold=-15dB:ratio=2:attack=15:release=120
+alimiter=limit=-2dB:attack=0.5:release=1
+```
+
+### Phonk / Drift
+
+Bass agresif + high-end presence, cocok untuk phonk, drift, meme edit.
+
+```
+equalizer=f=40:t=q:w=1:g=6
+equalizer=f=80:t=q:w=1:g=4
+equalizer=f=150:t=q:w=1:g=3
+equalizer=f=2000:t=q:w=1:g=2
+equalizer=f=5000:t=q:w=1:g=1.5
+equalizer=f=10000:t=q:w=1:g=1
+equalizer=f=14000:t=q:w=1:g=2
+acompressor=threshold=-22dB:ratio=4:attack=3:release=30
+alimiter=limit=-0.5dB:attack=0.05:release=0.3
+```
+
+### EDM / Electro
+
+Agresif di sub-bass dan high-end untuk club sound.
+
+```
+equalizer=f=40:t=q:w=1:g=4
+equalizer=f=60:t=q:w=1:g=3
+equalizer=f=200:t=q:w=1:g=-1
+equalizer=f=400:t=q:w=1:g=-2
+equalizer=f=5000:t=q:w=1:g=2.5
+equalizer=f=10000:t=q:w=1:g=3
+equalizer=f=16000:t=q:w=1:g=2
+acompressor=threshold=-18dB:ratio=3:attack=5:release=40
+alimiter=limit=-1dB:attack=0.1:release=0.5
+```
+
+### Hip-Hop / RnB
+
+Bass punchy + vokal clear, mid-low boosted.
+
+```
+equalizer=f=50:t=q:w=1:g=4
+equalizer=f=100:t=q:w=1:g=3
+equalizer=f=250:t=q:w=1:g=1.5
+equalizer=f=400:t=q:w=0.5:g=-1.5
+equalizer=f=3000:t=q:w=1:g=2
+equalizer=f=6000:t=q:w=1:g=1
+equalizer=f=10000:t=q:w=1:g=-1
+equalizer=f=14000:t=q:w=1:g=-2
+acompressor=threshold=-16dB:ratio=2.5:attack=8:release=60
+alimiter=limit=-1dB:attack=0.1:release=0.5
+```
+
+### Rock / Metal
+
+Mid agresif + high-end tajam, low-end tight.
+
+```
+equalizer=f=60:t=q:w=1:g=2
+equalizer=f=120:t=q:w=1:g=1
+equalizer=f=800:t=q:w=1:g=2
+equalizer=f=2500:t=q:w=1:g=3
+equalizer=f=5000:t=q:w=1:g=2
+equalizer=f=8000:t=q:w=1:g=1.5
+equalizer=f=12000:t=q:w=1:g=-1
+acompressor=threshold=-14dB:ratio=3.5:attack=3:release=30
+alimiter=limit=-0.5dB:attack=0.05:release=0.3
+```
+
+### Jazz / Akustik
+
+Natural, warm, dynamic range dipertahankan — minimal compression.
+
+```
+equalizer=f=80:t=q:w=1:g=1.5
+equalizer=f=250:t=q:w=1:g=2
+equalizer=f=1000:t=q:w=1:g=1
+equalizer=f=4000:t=q:w=1:g=-0.5
+equalizer=f=8000:t=q:w=1:g=-1
+equalizer=f=12000:t=q:w=1:g=-1.5
+acompressor=threshold=-10dB:ratio=1.5:attack=30:release=150
+```
+
+### Classical / Orchestral
+
+Dynamic range lebar, highs jernih, bass alami.
+
+```
+equalizer=f=40:t=q:w=0.5:g=1
+equalizer=f=200:t=q:w=1:g=1
+equalizer=f=500:t=q:w=1:g=0.5
+equalizer=f=2000:t=q:w=1:g=1
+equalizer=f=5000:t=q:w=0.5:g=1.5
+equalizer=f=10000:t=q:w=1:g=1
+equalizer=f=16000:t=q:w=1:g=2
+acompressor=threshold=-8dB:ratio=1.2:attack=50:release=200
+```
+
+### Reggae / Dub
+
+Bass tebal + mid hangat, treble halus.
+
+```
+equalizer=f=40:t=q:w=1:g=4
+equalizer=f=80:t=q:w=1:g=3
+equalizer=f=200:t=q:w=1:g=2
+equalizer=f=500:t=q:w=1:g=1
+equalizer=f=3000:t=q:w=1:g=-1.5
+equalizer=f=8000:t=q:w=1:g=-2.5
+equalizer=f=12000:t=q:w=1:g=-3
+acompressor=threshold=-15dB:ratio=2.5:attack=10:release=80
+alimiter=limit=-1.5dB:attack=0.1:release=1
+```
+
+### Podcast / Audiobook
+
+Vokal maksimal, noise rendah, konsisten — untuk spoken word.
+
+```
+equalizer=f=80:t=q:w=1:g=2
+equalizer=f=150:t=q:w=1:g=1.5
+equalizer=f=300:t=q:w=1:g=3
+equalizer=f=1000:t=q:w=1:g=2
+equalizer=f=3000:t=q:w=1:g=2
+equalizer=f=6000:t=q:w=1:g=-2
+equalizer=f=10000:t=q:w=1:g=-3
+equalizer=f=14000:t=q:w=1:g=-5
+anlmdn=s=0.5:p=0.4:r=1.5
+acompressor=threshold=-24dB:ratio=3.5:attack=3:release=40
+alimiter=limit=-0.5dB:attack=0.1:release=0.5
+```
+
+### Custom
+
+User dapat mengatur sendiri parameter EQ & filter.
+
+| Parameter | Range | Default |
+| --------- | ----- | ------- |
+| Bass (60Hz) | -12 to +12 dB | 0 |
+| Low-Mid (250Hz) | -12 to +12 dB | 0 |
+| Mid (1kHz) | -12 to +12 dB | 0 |
+| High-Mid (5kHz) | -12 to +12 dB | 0 |
+| Treble (10kHz) | -12 to +12 dB | 0 |
+| Compression | None / Light / Medium / Heavy | None |
+| Saturation | 0-100% | 0 |
+| Limiter | On / Off | Off |
+
+## Preview
+
+* Play segment pendek (15-30 detik) dengan preset terpilih
+* Tampilkan perbandingan waveform: original vs remastered (lihat perbedaan sebelum export)
+
+## Output
+
+| Field | Detail |
+| ----- | ------ |
+| Format | Sama dengan input (lossless: WAV/FLAC, lossy: MP3 320kbps). Bisa pilih format output terpisah |
+| Nama | `{original}_{preset}_remastered.{ext}` |
+| Folder | Bisa pilih sendiri / default: folder yang sama dengan original |
+
+## Batch Processing
+
+> Fitur untuk meremaster banyak file audio sekaligus dengan preset yang sama atau berbeda.
+
+### Flow Batch
+
+1. Import multiple files (atau folder)
+2. Pilih **Apply to All** (satu preset untuk semua) atau **Per File** (masing-masing beda preset)
+3. Tentukan format output (WAV / FLAC / MP3 320kbps / same as input)
+4. Klik **Export All**
+5. Progress bar menunjukkan: `File 3/12 — Remastering — 45%`
+6. Tombol **Cancel** untuk membatalkan batch
+7. Setelah selesai, muncul summary: `12 files remastered, 3 failed`
+
+### Display List (Batch)
+
+| # | Filename | Duration | Preset | Status |
+| - | -------- | -------- | ------ | ------ |
+| 1 | track1.mp3 | 3:45 | Warm Natural | ✅ Done |
+| 2 | track2.mp3 | 4:12 | Analog Vintage | ⏳ Processing |
+| 3 | track3.mp3 | 3:30 | Warm Natural | ⏳ Pending |
+| ... | ... | ... | ... | ... |
+
+### Actions
+
+* Import audio files (single)
+* Import folder (scan semua file audio)
+* Pilih preset per file atau apply to all
+* Preview perbandingan
+* Export satu per satu
+* Export all (batch)
+* Open output folder
+* Reset all
+
+---
+
 # Render Progress
 
 Display:
@@ -821,6 +1129,50 @@ FFprobe is responsible for:
 
 ---
 
+# Remastering (Post-Processing)
+
+> **Bukan fitur utama.** Ini adalah lapisan enhancement opsional setelah pipeline dasar berjalan.
+> Fokus utama tetap Mode 1 — Segment Loop yang sudah ada.
+> Remastering hanya dipakai jika user mengaktifkannya secara eksplisit.
+
+Fitur untuk memperhalus hasil render agar transisi dan tampilan lebih natural, tidak terlihat seperti potongan mentah.
+
+## Color Matching
+
+Samakan tone warna antar clip agar tidak ada lompatan warna yang mencolok saat transisi.
+
+* Rata-rata brightness/contrast per clip disamakan (FFmpeg `eq` filter)
+* Atau apply LUT seragam ke semua clip
+* Opsional: auto white balance
+
+## Smart Transitions
+
+Variasi transisi antar clip, tidak hanya dissolve:
+
+* Motion-blur crossfade
+* Dip to black / dip to white
+* Zoom in/out saat transisi
+* Slide left/right crop
+* Dipilih random atau sequential sesuai preferensi
+
+## Audio Smoothing
+
+* Fade in/out audio per clip (terpisah dari video crossfade)
+* Beat-matched cut opsional — deteksi beat dan potong clip mengikuti irama
+
+## Motion
+
+* Stabilization untuk clip goyang (FFmpeg `vidstab`)
+* Ken Burns effect — slow zoom/pan pada clip diam agar lebih sinematik
+
+## Look & Feel
+
+* Film grain halus agar tidak terlalu mulus
+* Vignette — gelapkan pinggir frame
+* Sharpening ringan
+
+---
+
 # Future Features (v2)
 
 * Batch rendering
@@ -836,4 +1188,3 @@ FFprobe is responsible for:
 * Smart scene detection
 * Drag-and-drop timeline editor
 * YouTube export presets
-

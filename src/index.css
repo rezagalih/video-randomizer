@@ -300,6 +300,7 @@ label {
   align-items: center;
   justify-content: center;
   z-index: 100;
+  overscroll-behavior: contain;
 }
 
 .modal {
@@ -312,6 +313,7 @@ label {
   display: flex;
   flex-direction: column;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  overscroll-behavior: contain;
 }
 
 .modal-header {
@@ -413,6 +415,11 @@ label {
   padding: 20px;
   overflow-y: auto;
   min-height: 200px;
+  overscroll-behavior: contain;
+}
+
+.scroll-contained {
+  overscroll-behavior: contain;
 }
 
 .modal-footer {

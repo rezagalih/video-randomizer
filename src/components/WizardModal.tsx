@@ -281,7 +281,11 @@ export default function WizardModal({ open, onClose, onAddJob }: Props) {
             {videos.length === 0 ? (
               <div className="empty-state" style={{ padding: 20 }}>No videos selected.</div>
             ) : (
-              <div style={{ maxHeight: 250, overflowY: "auto" }}>
+              <div
+                className="scroll-contained"
+                style={{ maxHeight: 250, overflowY: "auto" }}
+                onWheel={(e) => e.stopPropagation()}
+              >
                 <table>
                   <thead>
                     <tr>
@@ -325,7 +329,11 @@ export default function WizardModal({ open, onClose, onAddJob }: Props) {
             {music.length === 0 ? (
               <div className="empty-state" style={{ padding: 20 }}>No music selected.</div>
             ) : (
-              <div style={{ maxHeight: 250, overflowY: "auto" }}>
+              <div
+                className="scroll-contained"
+                style={{ maxHeight: 250, overflowY: "auto" }}
+                onWheel={(e) => e.stopPropagation()}
+              >
                 <table>
                   <thead>
                     <tr>

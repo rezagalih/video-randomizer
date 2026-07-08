@@ -105,6 +105,48 @@ export interface TrimProgress {
   output_paths: string[];
 }
 
+export interface RemasterProgress {
+  stage: string;
+  percent: number;
+  elapsed_secs: number;
+  current_file: number;
+  total_files: number;
+  current_filename: string;
+  output_paths: string[];
+}
+
+export const REMASTER_PRESETS: Record<string, { label: string; description: string; icon: string }> = {
+  none: { icon: "🔇", label: "None (Original)", description: "No processing" },
+  warm_natural: { icon: "🌤️", label: "Warm Natural", description: "Warmth analog, cocok untuk daily listening" },
+  analog_vintage: { icon: "📼", label: "Analog Vintage", description: "Tape saturation + low-end boost" },
+  smooth_broadcast: { icon: "📻", label: "Smooth Broadcast", description: "Mid boosted, highs smoothed" },
+  voice_clear: { icon: "🎙️", label: "Voice Clear", description: "Vokal clarity tanpa sibilance" },
+  heavy_bass: { icon: "🅱️", label: "Heavy Bass", description: "Sub-bass boosted, dance/beat-driven" },
+  lo_fi_chill: { icon: "☕", label: "Lo-Fi / Chill", description: "Warm tape + high cut" },
+  phonk_drift: { icon: "🏎️", label: "Phonk / Drift", description: "Bass agresif + high presence" },
+  edm_electro: { icon: "⚡", label: "EDM / Electro", description: "Sub-bass & high-end agresif" },
+  hip_hop_rnb: { icon: "🎤", label: "Hip-Hop / RnB", description: "Bass punchy + vokal clear" },
+  rock_metal: { icon: "🎸", label: "Rock / Metal", description: "Mid agresif + high-end tajam" },
+  jazz_akustik: { icon: "🎷", label: "Jazz / Akustik", description: "Natural warm, dynamic range" },
+  classical_orchestral: { icon: "🎻", label: "Classical / Orchestral", description: "Dynamic lebar, highs jernih" },
+  reggae_dub: { icon: "🌴", label: "Reggae / Dub", description: "Bass tebal, mid hangat" },
+  podcast_audiobook: { icon: "🎧", label: "Podcast / Audiobook", description: "Vokal maksimal, noise rendah" },
+  acoustic_guitar: { icon: "🎶", label: "Acoustic Guitar", description: "Warm mid, highs natural" },
+  afro_house: { icon: "🥁", label: "Afro House", description: "Punchy mid, perkusi hadir, highs smooth" },
+  piano_keys: { icon: "🎹", label: "Piano / Keys", description: "Bright, resonant, clear highs" },
+  cinematic: { icon: "🎬", label: "Cinematic / Film Score", description: "Dramatis, wide, sub-bass" },
+  ambient_drone: { icon: "🌫️", label: "Ambient / Drone", description: "Soft, airy, high cut" },
+  soul_funk: { icon: "🕺", label: "Soul / Funk", description: "Warm bass, crisp highs" },
+  latin: { icon: "💃", label: "Latin", description: "Bright, rhythmic, presence" },
+  kpop_pop: { icon: "🌟", label: "K-Pop / Pop", description: "Bright, punchy, compressed" },
+  trap_drill: { icon: "🔥", label: "Trap / Drill", description: "Sub-bass heavy, aggressive" },
+  drum_bass: { icon: "🔊", label: "Drum & Bass", description: "Sub-bass punch, crisp mids" },
+  techno_house: { icon: "💿", label: "Techno / House", description: "Sub-bass tight, highs sparkle" },
+  blues: { icon: "😎", label: "Blues", description: "Warm mid, smooth highs" },
+  vocal_boost: { icon: "🗣️", label: "Vocal Boost", description: "Mid-high clarity for vocals" },
+  bass_boost: { icon: "🔽", label: "Bass Boost", description: "Simple sub-bass & low-end boost" },
+};
+
 export interface WizardSelections {
   intro: VideoFile | null;
   videos: VideoFile[];
