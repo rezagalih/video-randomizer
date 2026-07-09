@@ -158,7 +158,16 @@ export default function QueuePanel({
                         {isCurrent ? statusLabel("rendering") : statusLabel(item.status)}
                       </span>
                       {item.error && (
-                        <span style={{ display: "block", fontSize: 11, color: "var(--danger)", marginTop: 2 }}>
+                        <span style={{
+                          display: "block",
+                          fontSize: 11,
+                          color: "var(--danger)",
+                          marginTop: 2,
+                          maxHeight: 180,
+                          overflow: "auto",
+                          whiteSpace: "pre-wrap",
+                          wordBreak: "break-word",
+                        }}>
                           {item.error}
                         </span>
                       )}

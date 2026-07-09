@@ -838,7 +838,22 @@ impl Renderer {
             let av = settings.ambient_volume;
             fc_parts.push(format!("[1:a]volume={}[music]", mv));
             fc_parts.push(format!("[{}:a]volume={}[ambient]", ambient_idx, av));
-            fc_parts.push("[music][ambient]amix=inputs=2:duration=first[aout]".to_string());
+            let norm = match &settings.audio_normalization {
+                AudioNormalization::Lufs14 => Some("loudnorm=I=-14:LRA=7:TP=-1".to_string()),
+                AudioNormalization::Lufs23 => Some("loudnorm=I=-23:LRA=7:TP=-2".to_string()),
+                AudioNormalization::Custom(target) => {
+                    Some(format!("loudnorm=I={}:LRA=7:TP=-1", target))
+                }
+                AudioNormalization::Off => None,
+            };
+            if let Some(norm) = norm {
+                fc_parts.push(format!(
+                    "[music][ambient]amix=inputs=2:duration=first[mixed];[mixed]{}[aout]",
+                    norm
+                ));
+            } else {
+                fc_parts.push("[music][ambient]amix=inputs=2:duration=first[aout]".to_string());
+            }
         }
 
         // Apply filter complex
@@ -864,18 +879,20 @@ impl Renderer {
             self.enc_opts(&mut cmd, settings);
         }
 
-        match &settings.audio_normalization {
-            AudioNormalization::Lufs14 => {
-                cmd.arg("-af").arg("loudnorm=I=-14:LRA=7:TP=-1");
+        if !use_ambient {
+            match &settings.audio_normalization {
+                AudioNormalization::Lufs14 => {
+                    cmd.arg("-af").arg("loudnorm=I=-14:LRA=7:TP=-1");
+                }
+                AudioNormalization::Lufs23 => {
+                    cmd.arg("-af").arg("loudnorm=I=-23:LRA=7:TP=-2");
+                }
+                AudioNormalization::Custom(target) => {
+                    let filter = format!("loudnorm=I={}:LRA=7:TP=-1", target);
+                    cmd.arg("-af").arg(&filter);
+                }
+                AudioNormalization::Off => {}
             }
-            AudioNormalization::Lufs23 => {
-                cmd.arg("-af").arg("loudnorm=I=-23:LRA=7:TP=-2");
-            }
-            AudioNormalization::Custom(target) => {
-                let filter = format!("loudnorm=I={}:LRA=7:TP=-1", target);
-                cmd.arg("-af").arg(&filter);
-            }
-            AudioNormalization::Off => {}
         }
 
         cmd.arg("-c:a").arg("aac").arg("-b:a").arg("192k");

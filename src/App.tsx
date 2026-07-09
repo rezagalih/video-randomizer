@@ -523,7 +523,7 @@ export default function App() {
       } catch (e) {
         const cancelled = queueCancelledRef.current;
         const msg = String(e);
-        const clean = /cancelled/i.test(msg) ? "Cancelled by user" : msg.length > 200 ? msg.slice(0, 200) + "..." : msg;
+        const clean = /cancelled/i.test(msg) ? "Cancelled by user" : msg;
         setQueue(prev => prev.map(j => j.id === job.id ? {
           ...j,
           status: (cancelled ? "cancelled" : "failed") as QueueStatus,
