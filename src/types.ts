@@ -115,6 +115,16 @@ export interface RemasterProgress {
   output_paths: string[];
 }
 
+export interface LiveOptimizeProgress {
+  stage: string;
+  percent: number;
+  elapsed_secs: number;
+  current_file: number;
+  total_files: number;
+  current_filename: string;
+  output_paths: string[];
+}
+
 export const REMASTER_PRESETS: Record<string, { label: string; description: string; icon: string }> = {
   none: { icon: "🔇", label: "None (Original)", description: "No processing" },
   warm_natural: { icon: "🌤️", label: "Warm Natural", description: "Warmth analog, cocok untuk daily listening" },

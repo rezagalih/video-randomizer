@@ -781,3 +781,151 @@ pub fn open_folder(path: String) -> Result<(), String> {
         Err(format!("Gagal membuka folder: exit code {:?}", status.code()))
     }
 }
+
+#[tauri::command]
+pub async fn optimize_for_live(
+    state: State<'_, Mutex<AppState>>,
+    videos: Vec<String>,
+    preset: String,
+    output_folder: String,
+    on_event: Channel<LiveOptimizeProgress>,
+) -> Result<Vec<String>, String> {
+    if videos.is_empty() {
+        return Err("No videos provided".into());
+    }
+
+    let (ffmpeg, ffprobe) = {
+        let guard = state.lock().map_err(|e| e.to_string())?;
+        (guard.renderer.ffmpeg_path(), guard.ffprobe_path.clone())
+    };
+
+    std::fs::create_dir_all(&output_folder).map_err(|e| e.to_string())?;
+
+    let start = std::time::Instant::now();
+    let total = videos.len();
+    let mut output_paths = Vec::new();
+
+    // Determine FFmpeg arguments based on preset
+    let (scale_filter, fps, bitrate) = match preset.as_str() {
+        "1080p_30fps" => ("scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2", "30", "4500k"),
+        "1080p_25fps" => ("scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2", "25", "4000k"),
+        "720p_30fps" => ("scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2", "30", "2500k"),
+        "720p_25fps" => ("scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2", "25", "2000k"),
+        _ => return Err(format!("Unknown preset: {}", preset)),
+    };
+
+    for (i, path) in videos.iter().enumerate() {
+        let filename = std::path::Path::new(path)
+            .file_stem()
+            .and_then(|n| n.to_str())
+            .unwrap_or("video");
+        
+        let ext = std::path::Path::new(path)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("mp4");
+
+        let out_filename = format!("{}_live_{}.{}", filename, preset, ext);
+        let out_path = std::path::PathBuf::from(&output_folder).join(&out_filename);
+        let out_str = out_path.to_string_lossy().to_string();
+
+        let _ = on_event.send(LiveOptimizeProgress {
+            stage: format!("Optimizing {}/{}", i + 1, total),
+            percent: ((i as f64 / total as f64) * 100.0).max(0.1),
+            elapsed_secs: start.elapsed().as_secs_f64(),
+            current_file: i + 1,
+            total_files: total,
+            current_filename: out_filename.clone(),
+            output_paths: output_paths.clone(),
+        });
+
+        // Get duration for progress tracking
+        let file_dur = metadata::get_video_duration(path, &ffprobe).ok();
+
+        let mut cmd = std::process::Command::new(&ffmpeg);
+        cmd.arg("-y").arg("-i").arg(path);
+
+        // Filters: scale + fps
+        let filter_complex = format!("{},fps={}", scale_filter, fps);
+        cmd.arg("-vf").arg(filter_complex);
+
+        // Encoding settings (fast, standard H264 for live with capped bitrate)
+        let bufsize = match bitrate {
+            "4500k" => "9000k",
+            "4000k" => "8000k",
+            "2500k" => "5000k",
+            "2000k" => "4000k",
+            _ => "8000k",
+        };
+
+        cmd.arg("-c:v").arg("libx264")
+           .arg("-preset").arg("veryfast")
+           .arg("-b:v").arg(bitrate)
+           .arg("-maxrate").arg(bitrate)
+           .arg("-bufsize").arg(bufsize)
+           .arg("-pix_fmt").arg("yuv420p")
+           .arg("-g").arg(format!("{}", fps.parse::<u32>().unwrap_or(30) * 2)) // keyframe interval 2 seconds
+           .arg("-c:a").arg("aac")
+           .arg("-b:a").arg("128k")
+           .arg(&out_str);
+
+        let mut child = cmd
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("Gagal spawn ffmpeg: {}", e))?;
+
+        let mut stderr_log = String::new();
+        if let Some(stderr) = child.stderr.take() {
+            use std::io::BufRead;
+            let reader = std::io::BufReader::new(stderr);
+            for line in reader.lines() {
+                if let Ok(line) = line {
+                    if let Some(time_str) = line.split("time=").nth(1) {
+                        let time_str = time_str.split_whitespace().next().unwrap_or("");
+                        if let Some(secs) = parse_ffmpeg_time(time_str) {
+                            let file_pct = if let Some(dur) = file_dur {
+                                if dur > 0.0 { ((secs / dur) * 100.0).min(99.0) } else { 50.0 }
+                            } else {
+                                50.0
+                            };
+                            let overall_pct = ((i as f64 + file_pct / 100.0) / total as f64) * 100.0;
+                            let _ = on_event.send(LiveOptimizeProgress {
+                                stage: format!("Optimizing {}/{} — {}%", i + 1, total, file_pct as u32),
+                                percent: overall_pct.min(99.0),
+                                elapsed_secs: start.elapsed().as_secs_f64(),
+                                current_file: i + 1,
+                                total_files: total,
+                                current_filename: out_filename.clone(),
+                                output_paths: output_paths.clone(),
+                            });
+                        }
+                    } else if line.contains("error") || line.contains("Error") || line.contains("Invalid") || line.contains("failed") {
+                        stderr_log.push_str(&line);
+                        stderr_log.push('\n');
+                    }
+                }
+            }
+        }
+
+        let status = child.wait().map_err(|e| format!("Gagal wait ffmpeg: {}", e))?;
+        if !status.success() {
+            let detail = if stderr_log.is_empty() { "no detail".into() } else { stderr_log };
+            return Err(format!("FFmpeg gagal pada file {}/{}: {}\n{}", i + 1, total, filename, detail));
+        }
+
+        output_paths.push(out_str.clone());
+    }
+
+    let _ = on_event.send(LiveOptimizeProgress {
+        stage: "Complete".into(),
+        percent: 100.0,
+        elapsed_secs: start.elapsed().as_secs_f64(),
+        current_file: total,
+        total_files: total,
+        current_filename: String::new(),
+        output_paths: output_paths.clone(),
+    });
+
+    Ok(output_paths)
+}

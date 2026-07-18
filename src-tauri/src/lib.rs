@@ -75,6 +75,7 @@ pub fn run() {
             commands::merge_videos,
             commands::trim_video_checkpoints,
             commands::remaster_audio,
+            commands::optimize_for_live,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

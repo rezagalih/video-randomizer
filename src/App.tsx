@@ -16,9 +16,10 @@ import RenderProgressPanel from "./components/RenderProgress";
 import QueuePanel from "./components/QueuePanel";
 import MergerTool from "./components/MergerTool";
 import TrimmerTool from "./components/TrimmerTool";
+import LiveOptimizerTool from "./components/LiveOptimizerTool";
 import WizardModal from "./components/WizardModal";
 
-type Tab = "import" | "settings" | "render" | "merger" | "trimmer";
+type Tab = "import" | "settings" | "render" | "merger" | "trimmer" | "live_optimizer";
 
 function defaultSettings(): RenderSettings {
   const now = new Date();
@@ -123,6 +124,7 @@ interface PersistedState {
   ambientPath?: string;
   ambientDuration?: number;
   trimmerOutputFolder?: string;
+  liveOptimizerOutputFolder?: string;
 }
 
 export default function App() {
@@ -147,6 +149,7 @@ export default function App() {
   const [ambientPath, setAmbientPath] = useState("");
   const [ambientDuration, setAmbientDuration] = useState(0);
   const [trimmerOutputFolder, setTrimmerOutputFolder] = useState("");
+  const [liveOptimizerOutputFolder, setLiveOptimizerOutputFolder] = useState("");
   const queueCancelledRef = useRef(false);
   const statePath = useRef<string>("");
   const loaded = useRef(false);
@@ -169,6 +172,7 @@ export default function App() {
         if (data.ambientPath) setAmbientPath(data.ambientPath);
         if (data.ambientDuration) setAmbientDuration(data.ambientDuration);
         if (data.trimmerOutputFolder) setTrimmerOutputFolder(data.trimmerOutputFolder);
+        if (data.liveOptimizerOutputFolder) setLiveOptimizerOutputFolder(data.liveOptimizerOutputFolder);
       } catch {
         // no saved state, use defaults
       }
@@ -176,10 +180,10 @@ export default function App() {
     })();
   }, []);
 
-  const save = useCallback(async (v: VideoFile[], m: MusicFile[], seq: SequenceItem[], s: RenderSettings, mo: number[], iv: VideoFile | null, vf: string[], mf: string[], ap: string, ad: number, tof: string) => {
+  const save = useCallback(async (v: VideoFile[], m: MusicFile[], seq: SequenceItem[], s: RenderSettings, mo: number[], iv: VideoFile | null, vf: string[], mf: string[], ap: string, ad: number, tof: string, loof: string) => {
     if (!statePath.current) return;
     const { invoke } = await import("@tauri-apps/api/core");
-    const data: PersistedState = { videos: v, music: m, sequence: seq, settings: s, musicOrder: mo, introVideo: iv, videoFolders: vf, musicFolders: mf, ambientPath: ap, ambientDuration: ad, trimmerOutputFolder: tof };
+    const data: PersistedState = { videos: v, music: m, sequence: seq, settings: s, musicOrder: mo, introVideo: iv, videoFolders: vf, musicFolders: mf, ambientPath: ap, ambientDuration: ad, trimmerOutputFolder: tof, liveOptimizerOutputFolder: loof };
     try {
       await invoke("save_state", { path: statePath.current, data });
     } catch { /* ignore save errors */ }
@@ -187,8 +191,8 @@ export default function App() {
 
   useEffect(() => {
     if (!loaded.current) return;
-    save(videos, music, sequence, settings, musicOrder, introVideo, videoFolders, musicFolders, ambientPath, ambientDuration, trimmerOutputFolder);
-  }, [videos, music, sequence, settings, musicOrder, introVideo, videoFolders, musicFolders, ambientPath, ambientDuration, trimmerOutputFolder]);
+    save(videos, music, sequence, settings, musicOrder, introVideo, videoFolders, musicFolders, ambientPath, ambientDuration, trimmerOutputFolder, liveOptimizerOutputFolder);
+  }, [videos, music, sequence, settings, musicOrder, introVideo, videoFolders, musicFolders, ambientPath, ambientDuration, trimmerOutputFolder, liveOptimizerOutputFolder]);
 
   // auto-generate when entering render tab
   useEffect(() => {
@@ -626,6 +630,9 @@ export default function App() {
         <button className={tab === "trimmer" ? "active" : ""} onClick={() => setTab("trimmer")}>
           ✂️ Trimmer
         </button>
+        <button className={tab === "live_optimizer" ? "active" : ""} onClick={() => setTab("live_optimizer")}>
+          🔴 Live Optimizer
+        </button>
       </div>
       <main>
         {tab === "import" && (
@@ -772,6 +779,14 @@ export default function App() {
             <TrimmerTool
               outputFolder={trimmerOutputFolder}
               onOutputFolderChange={setTrimmerOutputFolder}
+            />
+          </div>
+        )}
+        {tab === "live_optimizer" && (
+          <div className="panel">
+            <LiveOptimizerTool
+              outputFolder={liveOptimizerOutputFolder}
+              onOutputFolderChange={setLiveOptimizerOutputFolder}
             />
           </div>
         )}
