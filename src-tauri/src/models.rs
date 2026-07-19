@@ -73,19 +73,7 @@ pub enum EncoderMode {
     Software,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum OutputResolution {
-    Original,
-    Custom { width: u32, height: u32 },
-}
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", content = "value", rename_all = "snake_case")]
-pub enum OutputFps {
-    KeepOriginal,
-    Custom(f64),
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WatermarkSettings {
@@ -114,8 +102,7 @@ pub struct RenderSettings {
     pub mute_source_audio: bool,
     pub encoding_speed: EncodingSpeed,
     pub encoder_mode: EncoderMode,
-    pub resolution: OutputResolution,
-    pub fps: OutputFps,
+    pub video_preset: String,
     pub fade_duration: f64,
     pub output_filename: String,
     pub output_folder: String,
@@ -132,7 +119,6 @@ pub struct RenderSettings {
     pub ambient_path: String,
     pub music_volume: f64,
     pub ambient_volume: f64,
-    pub crf: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -40,8 +40,7 @@ function defaultSettings(): RenderSettings {
     mute_source_audio: true,
     encoding_speed: "balanced",
     encoder_mode: "auto",
-    resolution: { type: "original" },
-    fps: { type: "keep_original" },
+    video_preset: "1080p_30fps",
     fade_duration: 0.5,
     output_filename: `${ts}.mp4`,
     output_folder: "",
@@ -64,7 +63,6 @@ function defaultSettings(): RenderSettings {
     ambient_path: "",
     music_volume: 0.8,
     ambient_volume: 0.3,
-    crf: 23,
   };
 }
 
@@ -394,7 +392,7 @@ export default function App() {
     ambientDuration: number;
     musicVolume: number;
     ambientVolume: number;
-    crf: number;
+    video_preset: string;
   }) {
     const { invoke } = await import("@tauri-apps/api/core");
 
@@ -436,7 +434,7 @@ export default function App() {
       ambient_path: data.ambientPath,
       music_volume: data.musicVolume,
       ambient_volume: data.ambientVolume,
-      crf: data.crf,
+      video_preset: data.video_preset,
     };
 
     function loopPlaylist(baseOrder: number[], music: MusicFile[], targetDuration: number): number[] {

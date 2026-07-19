@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AudioNormalization, VideoFile, MusicFile, ScanResult } from "../types";
+import { VIDEO_PRESETS } from "./EncodingSettings";
 
 interface Props {
   open: boolean;
@@ -16,7 +17,7 @@ interface Props {
     ambientDuration: number;
     musicVolume: number;
     ambientVolume: number;
-    crf: number;
+    video_preset: string;
   }) => Promise<void>;
 }
 
@@ -43,7 +44,7 @@ export default function WizardModal({ open, onClose, onAddJob }: Props) {
   const [ambientDuration, setAmbientDuration] = useState(0);
   const [musicVolume, setMusicVolume] = useState(0.8);
   const [ambientVolume, setAmbientVolume] = useState(0.3);
-  const [crf, setCrf] = useState(23);
+  const [videoPreset, setVideoPreset] = useState("1080p_30fps");
 
   if (!open) return null;
 
@@ -60,7 +61,7 @@ export default function WizardModal({ open, onClose, onAddJob }: Props) {
     setAmbientDuration(0);
     setMusicVolume(0.8);
     setAmbientVolume(0.3);
-    setCrf(23);
+    setVideoPreset("1080p_30fps");
     setAdding(false);
   }
 
@@ -220,7 +221,7 @@ export default function WizardModal({ open, onClose, onAddJob }: Props) {
     if (music.length === 0) { alert("Select at least one music file."); return; }
     setAdding(true);
     try {
-      await onAddJob({ intro, videos, music, musicOrder, durationMode, fixedDurationMinutes, audioNormalization, ambientPath, ambientDuration, musicVolume, ambientVolume, crf });
+      await onAddJob({ intro, videos, music, musicOrder, durationMode, fixedDurationMinutes, audioNormalization, ambientPath, ambientDuration, musicVolume, ambientVolume, video_preset: videoPreset });
       reset();
       onClose();
     } catch (e) {
@@ -489,25 +490,19 @@ export default function WizardModal({ open, onClose, onAddJob }: Props) {
             </div>
             <hr style={{ margin: "16px 0", border: "none", borderTop: "1px solid var(--border)" }} />
             <div className="form-group">
-              <label>Video Quality (CRF)</label>
+              <label>Video Output Quality</label>
               <p style={{ fontSize: 13, color: "var(--text2)", marginBottom: 8 }}>
-                Lower value = better quality, larger file. Recommended: 18-28. Default: 23.
+                Preset kualitas video yang sudah dikunci (Fixed Bitrate/CBR) agar optimal.
               </p>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <span style={{ fontSize: 12, color: "var(--text2)" }}>Higher quality</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={51}
-                  value={crf}
-                  onChange={(e) => setCrf(Number(e.target.value))}
-                  style={{ flex: 1 }}
-                />
-                <span style={{ fontSize: 12, color: "var(--text2)" }}>Lower quality</span>
-              </div>
-              <div style={{ textAlign: "center", fontSize: 13, marginTop: 4, color: "var(--text2)" }}>
-                CRF: {crf} {crf <= 18 ? "(High quality)" : crf <= 23 ? "(Good quality)" : crf <= 28 ? "(Medium quality)" : "(Low quality)"}
-              </div>
+              <select
+                value={videoPreset}
+                onChange={(e) => setVideoPreset(e.target.value)}
+                style={{ width: "100%", padding: "8px" }}
+              >
+                {VIDEO_PRESETS.map((p) => (
+                  <option key={p.value} value={p.value}>{p.label}</option>
+                ))}
+              </select>
             </div>
             <hr style={{ margin: "16px 0", border: "none", borderTop: "1px solid var(--border)" }} />
             <div className="form-group">
@@ -571,7 +566,7 @@ export default function WizardModal({ open, onClose, onAddJob }: Props) {
                 {ambientPath ? (ambientPath.split("/").pop() || ambientPath.split("\\").pop()) : "None"}
               </div>
               <div className="card" style={{ padding: 12 }}>
-                <strong>Video Quality (CRF):</strong> {crf} {crf <= 18 ? "(High quality)" : crf <= 23 ? "(Good quality)" : crf <= 28 ? "(Medium quality)" : "(Lower quality)"}
+                <strong>Video Quality:</strong> {VIDEO_PRESETS.find(p => p.value === videoPreset)?.label || videoPreset}
               </div>
               <div className="card" style={{ padding: 12 }}>
                 <strong>Music Volume:</strong> {Math.round(musicVolume * 100)}%

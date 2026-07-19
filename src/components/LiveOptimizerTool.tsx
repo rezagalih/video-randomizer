@@ -86,10 +86,10 @@ export default function LiveOptimizerTool({ outputFolder, onOutputFolderChange }
   }
 
   const presets = [
-    { value: "1080p_30fps", label: "1080p 30fps" },
-    { value: "1080p_25fps", label: "1080p 25fps" },
-    { value: "720p_30fps", label: "720p 30fps" },
-    { value: "720p_25fps", label: "720p 25fps" },
+    { value: "1080p_30fps", label: "1080p 30fps (4500 kbps)" },
+    { value: "1080p_25fps", label: "1080p 25fps (4000 kbps)" },
+    { value: "720p_30fps", label: "720p 30fps (2500 kbps)" },
+    { value: "720p_25fps", label: "720p 25fps (2000 kbps)" },
   ];
 
   return (

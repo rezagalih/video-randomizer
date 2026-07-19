@@ -903,41 +903,77 @@ impl Renderer {
     }
 
     fn vf_opts(&self, cmd: &mut Command, s: &RenderSettings) {
-        let mut filters = Vec::new();
-        if let OutputResolution::Custom { width, height } = &s.resolution {
-            filters.push(format!("scale={}:{}", width, height));
-        }
-        if let OutputFps::Custom(f) = &s.fps {
-            filters.push(format!("fps={}", f));
-        }
-        if !filters.is_empty() {
-            cmd.arg("-vf").arg(filters.join(","));
-        }
+        let (scale_filter, fps, _) = match s.video_preset.as_str() {
+            "1080p_60fps" => ("scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2", "60", "6000k"),
+            "1080p_30fps" => ("scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2", "30", "4500k"),
+            "1080p_25fps" => ("scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2", "25", "4000k"),
+            "720p_60fps" => ("scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2", "60", "4500k"),
+            "720p_30fps" => ("scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2", "30", "2500k"),
+            "720p_25fps" => ("scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2", "25", "2000k"),
+            _ => ("scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2", "30", "4500k"),
+        };
+        cmd.arg("-vf").arg(format!("{},fps={}", scale_filter, fps));
     }
 
     fn enc_opts(&self, cmd: &mut Command, s: &RenderSettings) {
         let is_hardware = matches!(&s.encoder_mode, EncoderMode::Auto | EncoderMode::Hardware);
+        
+        let (_, fps, bitrate) = match s.video_preset.as_str() {
+            "1080p_60fps" => ("scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2", "60", "6000k"),
+            "1080p_30fps" => ("scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2", "30", "4500k"),
+            "1080p_25fps" => ("scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2", "25", "4000k"),
+            "720p_60fps" => ("scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2", "60", "4500k"),
+            "720p_30fps" => ("scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2", "30", "2500k"),
+            "720p_25fps" => ("scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2", "25", "2000k"),
+            _ => ("scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2", "30", "4500k"),
+        };
+
+        let bufsize = match bitrate {
+            "6000k" => "12000k",
+            "4500k" => "9000k",
+            "4000k" => "8000k",
+            "2500k" => "5000k",
+            "2000k" => "4000k",
+            _ => "9000k",
+        };
+
+        let enc_speed = match s.encoding_speed {
+            EncodingSpeed::Fast => "veryfast",
+            EncodingSpeed::Balanced => "medium",
+            EncodingSpeed::Quality => "slow",
+        };
+
+        let g = fps.parse::<u32>().unwrap_or(30) * 2;
 
         #[cfg(target_os = "macos")]
         if is_hardware {
-            let vt_crf = ((s.crf as f64 / 51.0) * 100.0) as u32;
-            cmd.args(["-c:v", "h264_videotoolbox", "-crf", &vt_crf.to_string()]);
+            cmd.args(["-c:v", "h264_videotoolbox"])
+               .args(["-b:v", bitrate])
+               .args(["-maxrate", bitrate])
+               .args(["-bufsize", bufsize])
+               .args(["-pix_fmt", "yuv420p"]);
             return;
         }
 
         #[cfg(target_os = "windows")]
         if is_hardware {
-            cmd.args(["-c:v", "h264_nvenc", "-cq", &s.crf.to_string()]);
+            cmd.args(["-c:v", "h264_nvenc"])
+               .args(["-preset", enc_speed])
+               .args(["-b:v", bitrate])
+               .args(["-maxrate", bitrate])
+               .args(["-bufsize", bufsize])
+               .args(["-g", &g.to_string()])
+               .args(["-pix_fmt", "yuv420p"]);
             return;
         }
 
-        let preset = match s.encoding_speed {
-            EncodingSpeed::Fast => "ultrafast",
-            EncodingSpeed::Balanced => "medium",
-            EncodingSpeed::Quality => "veryslow",
-        };
-        let crf = s.crf.to_string();
-        cmd.args(["-c:v", "libx264", "-preset", preset, "-crf", &crf]);
+        cmd.args(["-c:v", "libx264"])
+           .args(["-preset", enc_speed])
+           .args(["-b:v", bitrate])
+           .args(["-maxrate", bitrate])
+           .args(["-bufsize", bufsize])
+           .args(["-g", &g.to_string()])
+           .args(["-pix_fmt", "yuv420p"]);
     }
 
     fn clip_dur(&self, path: &str) -> Result<f64> {

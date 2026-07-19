@@ -45,8 +45,7 @@ export interface RenderSettings {
   mute_source_audio: boolean;
   encoding_speed: "fast" | "balanced" | "quality";
   encoder_mode: "auto" | "hardware" | "software";
-  resolution: { type: "original" } | { type: "custom"; width: number; height: number };
-  fps: { type: "keep_original" } | { type: "custom"; value: number };
+  video_preset: string;
   fade_duration: number;
   output_filename: string;
   output_folder: string;
@@ -63,7 +62,6 @@ export interface RenderSettings {
   ambient_path: string;
   music_volume: number;
   ambient_volume: number;
-  crf: number;
 }
 
 export interface RenderProgress {
@@ -163,6 +161,7 @@ export interface WizardSelections {
   music: MusicFile[];
   durationMode: "fixed" | "fixed_complete_last_song" | "selected_songs";
   fixedDurationMinutes: number;
+  video_preset: string;
 }
 
 export type QueueStatus = "pending" | "rendering" | "completed" | "failed" | "cancelled";

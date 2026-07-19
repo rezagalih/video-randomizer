@@ -5,21 +5,13 @@ interface Props {
   onChange: (s: RenderSettings) => void;
 }
 
-const RESOLUTIONS = [
-  { label: "Original", w: 0, h: 0 },
-  { label: "1280x720", w: 1280, h: 720 },
-  { label: "1920x1080", w: 1920, h: 1080 },
-  { label: "2560x1440", w: 2560, h: 1440 },
-  { label: "3840x2160", w: 3840, h: 2160 },
-];
-
-const FPS_OPTIONS = [
-  { label: "Keep Original", value: 0 },
-  { label: "24", value: 24 },
-  { label: "25", value: 25 },
-  { label: "30", value: 30 },
-  { label: "50", value: 50 },
-  { label: "60", value: 60 },
+export const VIDEO_PRESETS = [
+  { value: "1080p_60fps", label: "1080p 60fps (6000 kbps)" },
+  { value: "1080p_30fps", label: "1080p 30fps (4500 kbps)" },
+  { value: "1080p_25fps", label: "1080p 25fps (4000 kbps)" },
+  { value: "720p_60fps", label: "720p 60fps (4500 kbps)" },
+  { value: "720p_30fps", label: "720p 30fps (2500 kbps)" },
+  { value: "720p_25fps", label: "720p 25fps (2000 kbps)" },
 ];
 
 export default function EncodingSettings({ settings, onChange }: Props) {
@@ -27,24 +19,6 @@ export default function EncodingSettings({ settings, onChange }: Props) {
     onChange({ ...settings, ...d });
   }
 
-  const isCustomRes = settings.resolution.type === "custom";
-  const isCustomFps = settings.fps.type === "custom";
-
-  function setResolution(w: number, h: number) {
-    if (w === 0) {
-      onChange({ ...settings, resolution: { type: "original" } });
-    } else {
-      onChange({ ...settings, resolution: { type: "custom", width: w, height: h } });
-    }
-  }
-
-  function setFps(v: number) {
-    if (v === 0) {
-      onChange({ ...settings, fps: { type: "keep_original" } });
-    } else {
-      onChange({ ...settings, fps: { type: "custom", value: v } });
-    }
-  }
 
   return (
     <div className="card">
@@ -117,62 +91,20 @@ export default function EncodingSettings({ settings, onChange }: Props) {
         </div>
       </div>
       <div className="form-group">
-        <label>Resolution</label>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {RESOLUTIONS.map((r) => (
-            <button
-              key={r.label}
-              className={
-                (r.w === 0 && !isCustomRes) || (settings.resolution.type === "custom" && settings.resolution.width === r.w && settings.resolution.height === r.h)
-                  ? "primary"
-                  : ""
-              }
-              onClick={() => setResolution(r.w, r.h)}
-            >
-              {r.label}
-            </button>
+        <label>Video Output Quality</label>
+        <p style={{ fontSize: 13, color: "var(--text2)", marginBottom: 8 }}>
+          Preset kualitas video yang sudah dikunci (Fixed Bitrate/CBR) agar optimal untuk live streaming maupun playback.
+        </p>
+        <select
+          value={settings.video_preset}
+          onChange={(e) => update({ video_preset: e.target.value })}
+          style={{ width: "100%", padding: "8px" }}
+        >
+          {VIDEO_PRESETS.map((p) => (
+            <option key={p.value} value={p.value}>{p.label}</option>
           ))}
-        </div>
+        </select>
       </div>
-      <div className="form-group">
-        <label>FPS</label>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {FPS_OPTIONS.map((f) => (
-            <button
-              key={f.label}
-              className={
-                (f.value === 0 && !isCustomFps) || (settings.fps.type === "custom" && settings.fps.value === f.value)
-                  ? "primary"
-                  : ""
-              }
-              onClick={() => setFps(f.value)}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="form-group">
-          <label>Video Quality (CRF)</label>
-          <p style={{ fontSize: 13, color: "var(--text2)", marginBottom: 8 }}>
-            Lower value = better quality, larger file. Recommended: 18-28. Default: 23.
-          </p>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <span style={{ fontSize: 12, color: "var(--text2)" }}>Higher quality</span>
-            <input
-              type="range"
-              min={0}
-              max={51}
-              value={settings.crf}
-              onChange={(e) => update({ crf: Number(e.target.value) })}
-              style={{ flex: 1 }}
-            />
-            <span style={{ fontSize: 12, color: "var(--text2)" }}>Lower quality</span>
-          </div>
-          <div style={{ textAlign: "center", fontSize: 13, marginTop: 4, color: "var(--text2)" }}>
-            CRF: {settings.crf} {settings.crf <= 18 ? "(High quality)" : settings.crf <= 23 ? "(Good quality)" : settings.crf <= 28 ? "(Medium quality)" : "(Low quality)"}
-          </div>
-        </div>
         <div className="form-group">
           <label>Music Volume: {Math.round(settings.music_volume * 100)}%</label>
         <input
