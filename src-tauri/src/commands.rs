@@ -929,3 +929,143 @@ pub async fn optimize_for_live(
 
     Ok(output_paths)
 }
+
+#[tauri::command]
+pub async fn optimize_for_autoupload(
+    state: State<'_, Mutex<AppState>>,
+    videos: Vec<String>,
+    output_folder: String,
+    on_event: Channel<AutouploadOptimizeProgress>,
+) -> Result<Vec<String>, String> {
+    if videos.is_empty() {
+        return Err("No videos provided".into());
+    }
+
+    let (ffmpeg, ffprobe) = {
+        let guard = state.lock().map_err(|e| e.to_string())?;
+        (guard.renderer.ffmpeg_path(), guard.ffprobe_path.clone())
+    };
+
+    std::fs::create_dir_all(&output_folder).map_err(|e| e.to_string())?;
+
+    let start = std::time::Instant::now();
+    let total = videos.len();
+    let mut output_paths = Vec::new();
+
+    // The user specifically requested 1080p 25fps 8000kbps, medium CRF, with GOP=25
+    let scale_filter = "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2";
+    let fps = "25";
+    let maxrate = "8000k";
+    let bufsize = "16000k";
+    let crf = "23"; // medium crf
+    let gop = "25";
+
+    for (i, path) in videos.iter().enumerate() {
+        let filename = std::path::Path::new(path)
+            .file_stem()
+            .and_then(|n| n.to_str())
+            .unwrap_or("video");
+        
+        let ext = std::path::Path::new(path)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("mp4");
+
+        let out_filename = format!("{}_autoupload.{}", filename, ext);
+        let out_path = std::path::PathBuf::from(&output_folder).join(&out_filename);
+        let out_str = out_path.to_string_lossy().to_string();
+
+        let _ = on_event.send(AutouploadOptimizeProgress {
+            stage: format!("Optimizing {}/{}", i + 1, total),
+            percent: ((i as f64 / total as f64) * 100.0).max(0.1),
+            elapsed_secs: start.elapsed().as_secs_f64(),
+            current_file: i + 1,
+            total_files: total,
+            current_filename: out_filename.clone(),
+            output_paths: output_paths.clone(),
+        });
+
+        // Get duration for progress tracking
+        let file_dur = metadata::get_video_duration(path, &ffprobe).ok();
+
+        let mut cmd = std::process::Command::new(&ffmpeg);
+        cmd.arg("-y").arg("-i").arg(path);
+
+        let filter_complex = format!("{},fps={}", scale_filter, fps);
+        cmd.arg("-vf").arg(filter_complex);
+
+        // Enforce exact GOP: -g <fps> -keyint_min <fps> -sc_threshold 0
+        cmd.arg("-c:v").arg("libx264")
+           .arg("-preset").arg("veryfast")
+           .arg("-crf").arg(crf)
+           .arg("-maxrate").arg(maxrate)
+           .arg("-bufsize").arg(bufsize)
+           .arg("-pix_fmt").arg("yuv420p")
+           .arg("-g").arg(gop)
+           .arg("-keyint_min").arg(gop)
+           .arg("-sc_threshold").arg("0")
+           .arg("-c:a").arg("aac")
+           .arg("-b:a").arg("192k")
+           .arg(&out_str);
+
+        let mut child = cmd
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("Gagal spawn ffmpeg: {}", e))?;
+
+        let mut stderr_log = String::new();
+        if let Some(stderr) = child.stderr.take() {
+            use std::io::BufRead;
+            let reader = std::io::BufReader::new(stderr);
+            for line in reader.lines() {
+                if let Ok(line) = line {
+                    if let Some(time_str) = line.split("time=").nth(1) {
+                        let time_str = time_str.split_whitespace().next().unwrap_or("");
+                        if let Some(secs) = parse_ffmpeg_time(time_str) {
+                            let file_pct = if let Some(dur) = file_dur {
+                                if dur > 0.0 { ((secs / dur) * 100.0).min(99.0) } else { 50.0 }
+                            } else {
+                                50.0
+                            };
+                            let overall_pct = ((i as f64 + file_pct / 100.0) / total as f64) * 100.0;
+                            let _ = on_event.send(AutouploadOptimizeProgress {
+                                stage: format!("Optimizing {}/{} — {}%", i + 1, total, file_pct as u32),
+                                percent: overall_pct.min(99.0),
+                                elapsed_secs: start.elapsed().as_secs_f64(),
+                                current_file: i + 1,
+                                total_files: total,
+                                current_filename: out_filename.clone(),
+                                output_paths: output_paths.clone(),
+                            });
+                        }
+                    } else if line.contains("error") || line.contains("Error") || line.contains("Invalid") || line.contains("failed") {
+                        stderr_log.push_str(&line);
+                        stderr_log.push('\n');
+                    }
+                }
+            }
+        }
+
+        let status = child.wait().map_err(|e| format!("Gagal wait ffmpeg: {}", e))?;
+        if !status.success() {
+            let detail = if stderr_log.is_empty() { "no detail".into() } else { stderr_log };
+            return Err(format!("FFmpeg gagal pada file {}/{}: {}\n{}", i + 1, total, filename, detail));
+        }
+
+        output_paths.push(out_str.clone());
+    }
+
+    let _ = on_event.send(AutouploadOptimizeProgress {
+        stage: "Complete".into(),
+        percent: 100.0,
+        elapsed_secs: start.elapsed().as_secs_f64(),
+        current_file: total,
+        total_files: total,
+        current_filename: String::new(),
+        output_paths: output_paths.clone(),
+    });
+
+    Ok(output_paths)
+}
+

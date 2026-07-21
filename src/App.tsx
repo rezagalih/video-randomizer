@@ -17,9 +17,10 @@ import QueuePanel from "./components/QueuePanel";
 import MergerTool from "./components/MergerTool";
 import TrimmerTool from "./components/TrimmerTool";
 import LiveOptimizerTool from "./components/LiveOptimizerTool";
+import AutouploadOptimizerTool from "./components/AutouploadOptimizerTool";
 import WizardModal from "./components/WizardModal";
 
-type Tab = "import" | "settings" | "render" | "merger" | "trimmer" | "live_optimizer";
+type Tab = "import" | "settings" | "render" | "merger" | "trimmer" | "live_optimizer" | "autoupload_optimizer";
 
 function defaultSettings(): RenderSettings {
   const now = new Date();
@@ -123,6 +124,7 @@ interface PersistedState {
   ambientDuration?: number;
   trimmerOutputFolder?: string;
   liveOptimizerOutputFolder?: string;
+  autouploadOptimizerOutputFolder?: string;
 }
 
 export default function App() {
@@ -148,6 +150,7 @@ export default function App() {
   const [ambientDuration, setAmbientDuration] = useState(0);
   const [trimmerOutputFolder, setTrimmerOutputFolder] = useState("");
   const [liveOptimizerOutputFolder, setLiveOptimizerOutputFolder] = useState("");
+  const [autouploadOptimizerOutputFolder, setAutouploadOptimizerOutputFolder] = useState("");
   const queueCancelledRef = useRef(false);
   const statePath = useRef<string>("");
   const loaded = useRef(false);
@@ -171,6 +174,7 @@ export default function App() {
         if (data.ambientDuration) setAmbientDuration(data.ambientDuration);
         if (data.trimmerOutputFolder) setTrimmerOutputFolder(data.trimmerOutputFolder);
         if (data.liveOptimizerOutputFolder) setLiveOptimizerOutputFolder(data.liveOptimizerOutputFolder);
+        if (data.autouploadOptimizerOutputFolder) setAutouploadOptimizerOutputFolder(data.autouploadOptimizerOutputFolder);
       } catch {
         // no saved state, use defaults
       }
@@ -178,10 +182,10 @@ export default function App() {
     })();
   }, []);
 
-  const save = useCallback(async (v: VideoFile[], m: MusicFile[], seq: SequenceItem[], s: RenderSettings, mo: number[], iv: VideoFile | null, vf: string[], mf: string[], ap: string, ad: number, tof: string, loof: string) => {
+  const save = useCallback(async (v: VideoFile[], m: MusicFile[], seq: SequenceItem[], s: RenderSettings, mo: number[], iv: VideoFile | null, vf: string[], mf: string[], ap: string, ad: number, tof: string, loof: string, aoof: string) => {
     if (!statePath.current) return;
     const { invoke } = await import("@tauri-apps/api/core");
-    const data: PersistedState = { videos: v, music: m, sequence: seq, settings: s, musicOrder: mo, introVideo: iv, videoFolders: vf, musicFolders: mf, ambientPath: ap, ambientDuration: ad, trimmerOutputFolder: tof, liveOptimizerOutputFolder: loof };
+    const data: PersistedState = { videos: v, music: m, sequence: seq, settings: s, musicOrder: mo, introVideo: iv, videoFolders: vf, musicFolders: mf, ambientPath: ap, ambientDuration: ad, trimmerOutputFolder: tof, liveOptimizerOutputFolder: loof, autouploadOptimizerOutputFolder: aoof };
     try {
       await invoke("save_state", { path: statePath.current, data });
     } catch { /* ignore save errors */ }
@@ -189,8 +193,8 @@ export default function App() {
 
   useEffect(() => {
     if (!loaded.current) return;
-    save(videos, music, sequence, settings, musicOrder, introVideo, videoFolders, musicFolders, ambientPath, ambientDuration, trimmerOutputFolder, liveOptimizerOutputFolder);
-  }, [videos, music, sequence, settings, musicOrder, introVideo, videoFolders, musicFolders, ambientPath, ambientDuration, trimmerOutputFolder, liveOptimizerOutputFolder]);
+    save(videos, music, sequence, settings, musicOrder, introVideo, videoFolders, musicFolders, ambientPath, ambientDuration, trimmerOutputFolder, liveOptimizerOutputFolder, autouploadOptimizerOutputFolder);
+  }, [videos, music, sequence, settings, musicOrder, introVideo, videoFolders, musicFolders, ambientPath, ambientDuration, trimmerOutputFolder, liveOptimizerOutputFolder, autouploadOptimizerOutputFolder]);
 
   // auto-generate when entering render tab
   useEffect(() => {
@@ -631,6 +635,9 @@ export default function App() {
         <button className={tab === "live_optimizer" ? "active" : ""} onClick={() => setTab("live_optimizer")}>
           🔴 Live Optimizer
         </button>
+        <button className={tab === "autoupload_optimizer" ? "active" : ""} onClick={() => setTab("autoupload_optimizer")}>
+          🚀 Autoupload Optimizer
+        </button>
       </div>
       <main>
         {tab === "import" && (
@@ -785,6 +792,14 @@ export default function App() {
             <LiveOptimizerTool
               outputFolder={liveOptimizerOutputFolder}
               onOutputFolderChange={setLiveOptimizerOutputFolder}
+            />
+          </div>
+        )}
+        {tab === "autoupload_optimizer" && (
+          <div className="panel">
+            <AutouploadOptimizerTool
+              outputFolder={autouploadOptimizerOutputFolder}
+              onOutputFolderChange={setAutouploadOptimizerOutputFolder}
             />
           </div>
         )}

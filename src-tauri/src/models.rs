@@ -180,3 +180,14 @@ pub struct LiveOptimizeProgress {
     pub current_filename: String,
     pub output_paths: Vec<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AutouploadOptimizeProgress {
+    pub stage: String,
+    pub percent: f64,
+    pub elapsed_secs: f64,
+    pub current_file: usize,
+    pub total_files: usize,
+    pub current_filename: String,
+    pub output_paths: Vec<String>,
+}
